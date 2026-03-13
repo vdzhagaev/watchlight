@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Env          string     `yaml:"env" env:"APP_ENV" env-default:"local"`
 	Database     Database   `yaml:"database"`
+	StoragePath  string     `yaml:"storage_path" env-required:"true" env:"STORAGE_PATH"`
 	HTTPServer   HTTPServer `yaml:"http_server"`
 	Monitoring   Monitoring `yaml:"monitoring"`
 	SlackWebhook string     `yaml:"slack_webhook" env:"SLACK_WEBHOOK_URL"`
@@ -39,19 +40,18 @@ type Monitoring struct {
 func MustLoad() *Config {
 	configPath := os.Getenv("CONFIG_PATH")
 
-	var cfg Config
-
-	if configPath != "" {
-		if _, err := os.Stat(configPath); err == nil {
-			if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
-				log.Fatalf("cannot read config: %s", err)
-			}
-			return &cfg
-		}
+	if configPath == "" {
+		log.Fatal("CONFIG_PATH not set in environment")
 	}
 
-	if err := cleanenv.ReadEnv(&cfg); err != nil {
-		log.Fatalf("cannot read env: %s", err)
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		log.Fatalf("config file does not exist: %s", configPath)
+	}
+
+	var cfg Config
+
+	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
+		log.Fatalf("cannot read config: %s", err)
 	}
 
 	return &cfg

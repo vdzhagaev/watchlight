@@ -3,6 +3,8 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+
+	_ "modernc.org/sqlite"
 )
 
 type Storage struct {
@@ -12,11 +14,15 @@ type Storage struct {
 func New(path string) (*Storage, error) {
 	const op = "storage.sqlite.New"
 
-	db, err := sql.Open("sqlite3", path)
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	_, err = db.Exec("PRAGMA journal_mode=WAL")
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec("PRAGMA foreign_keys = ON")
 	if err != nil {
 		return nil, err
 	}

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"gitlab.com/l0veme-projects/uptime-monitor/internal/storage"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 func (s *Storage) GetPendingSites(ctx context.Context, stepType storage.StepType, limit int) ([]storage.Site, error) {
@@ -40,6 +42,31 @@ func (s *Storage) GetPendingSites(ctx context.Context, stepType storage.StepType
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	return sites, nil
+}
+
+func (s *Storage) SaveMonitor(ctx context.Context, monitorURL string) (int64, error) {
+	const op = "sqlite.Storage.SaveMonitor"
+
+	stmt, err := s.db.PrepareContext(ctx, "INSERT INTO monitors (url) VALUES (?)")
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+	defer stmt.Close()
+
+	res, err := stmt.ExecContext(ctx, monitorURL)
+	if err != nil {
+		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			return 0, fmt.Errorf("%s: %w", op, storage.ErrMonitorExists)
+		}
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("%s: failed to get last insert id: %w", op, err)
+	}
+
+	return id, nil
 }
 
 func checkStepType(st storage.StepType) error {
