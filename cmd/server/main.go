@@ -14,7 +14,6 @@ import (
 	"vdzhagev/go-uptime-checker/internal/http-server/middleware/logger"
 	"vdzhagev/go-uptime-checker/internal/lib/logger/handlers/slogpretty"
 	"vdzhagev/go-uptime-checker/internal/lib/logger/sl"
-	"vdzhagev/go-uptime-checker/internal/services/checker"
 	"vdzhagev/go-uptime-checker/internal/storage/memory"
 
 	"github.com/go-chi/chi/v5"
@@ -35,8 +34,8 @@ func main() {
 	log := setupLogger(cfg.Env)
 	log.Info("Uptime Monitoring Service starting...")
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	appCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// TODO: DB & Storage
 	// storage, err := sqlite.New(cfg.StoragePath)
@@ -86,22 +85,16 @@ func main() {
 
 	log.Info("Monitoring active. Press Ctrl+C to stop the server.")
 
-	testMonitor, err := storage.GetMonitor(context.Background(), 1)
-	_ = err
-
-	duration, err := checker.CheckTCP(checker.CheckRequest{URL: testMonitor.URL})
-	log.Debug(fmt.Sprintf("CheckTCP %s in %s", testMonitor.URL, duration))
-
 	// TODO: Graceful shutdown
-	sign := <-stop
-	log.Info("Stopping server", slog.String("signal", sign.String()))
+	<-appCtx.Done()
+	log.Info("Stopping server")
 	fmt.Println()
 	log.Info("Shutting down gracefully...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.HTTPServer.ShutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.HTTPServer.ShutdownTimeout)
 	defer cancel()
 
-	if err := server.Shutdown(ctx); err != nil {
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Error("server shutdown failed", sl.Err(err))
 	}
 
