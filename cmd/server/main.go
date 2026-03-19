@@ -14,10 +14,12 @@ import (
 	"gitlab.com/l0veme-projects/uptime-monitor/internal/http-server/middleware/logger"
 	"gitlab.com/l0veme-projects/uptime-monitor/internal/lib/logger/handlers/slogpretty"
 	"gitlab.com/l0veme-projects/uptime-monitor/internal/lib/logger/sl"
+	"gitlab.com/l0veme-projects/uptime-monitor/internal/services/checker"
 	"gitlab.com/l0veme-projects/uptime-monitor/internal/storage/memory"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-playground/validator/v10"
 )
 
 const (
@@ -55,10 +57,14 @@ func main() {
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.URLFormat)
 
+	val := validator.New()
+
+	mHandler := monitor.NewHandler(log, val, storage, storage)
+
 	router.Route("/monitors", func(r chi.Router) {
-		r.Post("/", monitor.NewSave(log, storage))
-		r.Get("/", monitor.NewList(log, storage))
-		r.Get("/{monitorID}", monitor.NewFind(log, storage))
+		r.Post("/", mHandler.Save)
+		r.Get("/", mHandler.List)
+		r.Get("/{monitorID}", mHandler.Find)
 	})
 
 	// TODO: HTTP Server
@@ -79,6 +85,12 @@ func main() {
 	}()
 
 	log.Info("Monitoring active. Press Ctrl+C to stop the server.")
+
+	testMonitor, err := storage.GetMonitor(context.Background(), 1)
+	_ = err
+
+	duration, err := checker.CheckTCP(checker.CheckRequest{URL: testMonitor.URL})
+	log.Debug(fmt.Sprintf("CheckTCP %s in %s", testMonitor.URL, duration))
 
 	// TODO: Graceful shutdown
 	sign := <-stop
