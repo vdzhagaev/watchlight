@@ -19,6 +19,7 @@ import (
 type CheckRequest struct {
 	Type              string   `json:"type" validate:"required,oneof=http ping custom"`
 	Interval          int      `json:"interval" validate:"required,min=10"`
+	Timeout           int      `json:"timeout" validate:"required,min=2"`
 	MaxAttempts       int      `json:"max_attempts" validate:"required,min=1"`
 	DoErrorScreenshot bool     `json:"do_error_screenshot"`
 	Keywords          []string `json:"keywords,omitempty"`
@@ -73,6 +74,7 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 		m.CheckConfigs = append(m.CheckConfigs, domain.MonitorCheckConfig{
 			CheckType:         domain.CheckType(c.Type),
 			CheckInterval:     c.Interval,
+			CheckTimeout:      c.Timeout,
 			MaxAttempts:       c.MaxAttempts,
 			DoErrorScreenshot: c.DoErrorScreenshot,
 			Keywords:          c.Keywords,
