@@ -1,67 +1,37 @@
 package checker
 
 import (
+	"context"
 	"fmt"
 	"net"
-	"net/url"
-	"strings"
 	"time"
+	"vdzhagev/go-uptime-checker/internal/lib/netutil"
 )
 
-func CheckTCP(req CheckRequest) (time.Duration, error) {
+func CheckTCP(ctx context.Context, req CheckRequest) (time.Duration, error) {
 	const op = "services.checker.tcp.check"
 
-	hostPort, err := PrepareAddress(req)
+	hostPort, err := netutil.PrepareAddress(req.URL)
 
 	if err != nil {
 		return 0, err
 	}
 
+	if req.Timeout <= 0 {
+		req.Timeout = time.Second * 5
+	}
+
+	dialer := net.Dialer{Timeout: req.Timeout}
+
 	start := time.Now()
 
-	conn, err := net.DialTimeout("tcp", hostPort, time.Second*5)
+	conn, err := dialer.DialContext(ctx, "tcp", hostPort)
 
 	if err != nil {
-		return 0, fmt.Errorf("%s: failed to connect to address: %s\n%w", op, hostPort, err)
+		return 0, fmt.Errorf("%s: connect to %s: %w", op, hostPort, err)
 	}
-
+	duration := time.Since(start)
 	defer conn.Close()
 
-	duration := time.Since(start)
-
 	return duration, nil
-
-}
-
-func PrepareAddress(req CheckRequest) (string, error) {
-	const op = "services.checker.tcp.prepareAddress"
-	index := strings.Index(req.URL, "://")
-
-	var rawURL string
-	if index < 0 || index > 6 {
-		rawURL = "http://" + req.URL
-	} else {
-		rawURL = req.URL
-	}
-
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
-	}
-
-	if u.Scheme == "" || u.Host == "" {
-		return "", fmt.Errorf("%s: wrong url: %s", op, req.URL)
-	}
-
-	host, port, err := net.SplitHostPort(u.Host)
-	if err != nil {
-		host = u.Host
-		if u.Scheme == "http" {
-			port = "80"
-
-		} else {
-			port = "443"
-		}
-	}
-	return net.JoinHostPort(host, port), nil
 }
