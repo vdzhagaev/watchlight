@@ -9,7 +9,7 @@ var monitors = []domain.Monitor{
 		URL:    "https://google.com",
 		Status: domain.MonitorUp,
 		CheckConfigs: []domain.MonitorCheckConfig{
-			{ID: 101, MonitorID: 1, CheckType: domain.CheckHTTP, IsEnabled: true, CheckInterval: 60, MaxAttempts: 3, Keywords: []string{"google", "search"}},
+			{ID: 101, MonitorID: 1, CheckType: domain.CheckHTTP, IsEnabled: true, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3, Keywords: []string{"google", "search"}},
 		},
 	},
 	{
@@ -18,7 +18,7 @@ var monitors = []domain.Monitor{
 		URL:    "https://api.github.com",
 		Status: domain.MonitorUp,
 		CheckConfigs: []domain.MonitorCheckConfig{
-			{ID: 102, MonitorID: 2, CheckType: domain.CheckHTTP, IsEnabled: true, CheckInterval: 30, MaxAttempts: 2},
+			{ID: 102, MonitorID: 2, CheckType: domain.CheckHTTP, IsEnabled: true, CheckInterval: 30, CheckTimeout: 10, MaxAttempts: 2},
 		},
 	},
 	{
@@ -27,7 +27,7 @@ var monitors = []domain.Monitor{
 		URL:    "192.168.1.50",
 		Status: domain.MonitorDown,
 		CheckConfigs: []domain.MonitorCheckConfig{
-			{ID: 103, MonitorID: 3, CheckType: domain.CheckPing, IsEnabled: true, CheckInterval: 15, MaxAttempts: 5},
+			{ID: 103, MonitorID: 3, CheckType: domain.CheckPing, IsEnabled: true, CheckInterval: 15, CheckTimeout: 2, MaxAttempts: 5},
 		},
 	},
 	{
@@ -36,7 +36,7 @@ var monitors = []domain.Monitor{
 		URL:    "https://auth.example.com/login",
 		Status: domain.MonitorUp,
 		CheckConfigs: []domain.MonitorCheckConfig{
-			{ID: 104, MonitorID: 4, CheckType: domain.CheckHeadless, IsEnabled: true, CheckInterval: 300, MaxAttempts: 2, DoErrorScreenshot: true},
+			{ID: 104, MonitorID: 4, CheckType: domain.CheckHeadless, IsEnabled: true, CheckInterval: 300, CheckTimeout: 30, MaxAttempts: 2, DoErrorScreenshot: true},
 		},
 	},
 	{
@@ -45,7 +45,7 @@ var monitors = []domain.Monitor{
 		URL:    "http://crm.local",
 		Status: domain.MonitorUnknown,
 		CheckConfigs: []domain.MonitorCheckConfig{
-			{ID: 105, MonitorID: 5, CheckType: domain.CheckHTTP, IsEnabled: false, CheckInterval: 600, MaxAttempts: 1},
+			{ID: 105, MonitorID: 5, CheckType: domain.CheckHTTP, IsEnabled: false, CheckInterval: 600, CheckTimeout: 15, MaxAttempts: 1},
 		},
 	},
 	{
@@ -54,8 +54,8 @@ var monitors = []domain.Monitor{
 		URL:    "https://my-cool-startup.io",
 		Status: domain.MonitorUp,
 		CheckConfigs: []domain.MonitorCheckConfig{
-			{ID: 106, MonitorID: 6, CheckType: domain.CheckHTTP, IsEnabled: true, CheckInterval: 60, MaxAttempts: 3, Keywords: []string{"Welcome"}},
-			{ID: 107, MonitorID: 6, CheckType: domain.CheckPing, IsEnabled: true, CheckInterval: 60, MaxAttempts: 3},
+			{ID: 106, MonitorID: 6, CheckType: domain.CheckHTTP, IsEnabled: true, CheckInterval: 60, CheckTimeout: 7, MaxAttempts: 3, Keywords: []string{"Welcome"}},
+			{ID: 107, MonitorID: 6, CheckType: domain.CheckPing, IsEnabled: true, CheckInterval: 60, CheckTimeout: 3, MaxAttempts: 3},
 		},
 	},
 	{
@@ -64,7 +64,7 @@ var monitors = []domain.Monitor{
 		URL:    "https://stripe.com",
 		Status: domain.MonitorUp,
 		CheckConfigs: []domain.MonitorCheckConfig{
-			{ID: 108, MonitorID: 7, CheckType: domain.CheckHTTP, IsEnabled: true, CheckInterval: 30, MaxAttempts: 3},
+			{ID: 108, MonitorID: 7, CheckType: domain.CheckHTTP, IsEnabled: true, CheckInterval: 30, CheckTimeout: 5, MaxAttempts: 3},
 		},
 	},
 	{
@@ -73,7 +73,7 @@ var monitors = []domain.Monitor{
 		URL:    "backup.local.net",
 		Status: domain.MonitorDown,
 		CheckConfigs: []domain.MonitorCheckConfig{
-			{ID: 109, MonitorID: 8, CheckType: domain.CheckPing, IsEnabled: true, CheckInterval: 120, MaxAttempts: 10},
+			{ID: 109, MonitorID: 8, CheckType: domain.CheckPing, IsEnabled: true, CheckInterval: 120, CheckTimeout: 10, MaxAttempts: 10},
 		},
 	},
 	{
@@ -82,7 +82,7 @@ var monitors = []domain.Monitor{
 		URL:    "https://admin.example.com",
 		Status: domain.MonitorUp,
 		CheckConfigs: []domain.MonitorCheckConfig{
-			{ID: 110, MonitorID: 9, CheckType: domain.CheckHeadless, IsEnabled: true, CheckInterval: 600, MaxAttempts: 2, DoErrorScreenshot: true},
+			{ID: 110, MonitorID: 9, CheckType: domain.CheckHeadless, IsEnabled: true, CheckInterval: 600, CheckTimeout: 45, MaxAttempts: 2, DoErrorScreenshot: true},
 		},
 	},
 	{
@@ -91,7 +91,7 @@ var monitors = []domain.Monitor{
 		URL:    "smtp.mailtrap.io",
 		Status: domain.MonitorUnknown,
 		CheckConfigs: []domain.MonitorCheckConfig{
-			{ID: 111, MonitorID: 10, CheckType: domain.CheckPing, IsEnabled: true, CheckInterval: 60, MaxAttempts: 3},
+			{ID: 111, MonitorID: 10, CheckType: domain.CheckPing, IsEnabled: true, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3},
 		},
 	},
 }
