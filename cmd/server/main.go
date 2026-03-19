@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -9,11 +10,11 @@ import (
 	"syscall"
 
 	"gitlab.com/l0veme-projects/uptime-monitor/internal/config"
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/http-server/handlers/monitor/save"
+	"gitlab.com/l0veme-projects/uptime-monitor/internal/http-server/handlers/monitor"
 	"gitlab.com/l0veme-projects/uptime-monitor/internal/http-server/middleware/logger"
 	"gitlab.com/l0veme-projects/uptime-monitor/internal/lib/logger/handlers/slogpretty"
 	"gitlab.com/l0veme-projects/uptime-monitor/internal/lib/logger/sl"
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/storage/sqlite"
+	"gitlab.com/l0veme-projects/uptime-monitor/internal/storage/memory"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -36,13 +37,13 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	// TODO: DB & Storage
-	storage, err := sqlite.New(cfg.StoragePath)
-	if err != nil {
-		log.Error("failed to initialize storage", sl.Err(err))
-		os.Exit(1)
-	}
+	// storage, err := sqlite.New(cfg.StoragePath)
+	// if err != nil {
+	// 	log.Error("failed to initialize storage", sl.Err(err))
+	// 	os.Exit(1)
+	// }
 
-	_ = storage
+	storage := memory.New()
 
 	// TODO: Workers: Scheduler & Checker
 	router := chi.NewRouter()
@@ -54,8 +55,11 @@ func main() {
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.URLFormat)
 
-	router.Post("/sites", save.New(log,
-		storage))
+	router.Route("/monitors", func(r chi.Router) {
+		r.Post("/", monitor.NewSave(log, storage))
+		r.Get("/", monitor.NewList(log, storage))
+		r.Get("/{monitorID}", monitor.NewFind(log, storage))
+	})
 
 	// TODO: HTTP Server
 	server := http.Server{
@@ -68,16 +72,32 @@ func main() {
 
 	log.Info("HTTP server started", slog.String("address", cfg.HTTPServer.Address))
 
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("failed to start HTTP server", sl.Err(err))
+		}
+	}()
+
 	log.Info("Monitoring active. Press Ctrl+C to stop the server.")
 
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Error("failed to start HTTP server", sl.Err(err))
-	}
-
 	// TODO: Graceful shutdown
-	<-stop
+	sign := <-stop
+	log.Info("Stopping server", slog.String("signal", sign.String()))
 	fmt.Println()
 	log.Info("Shutting down gracefully...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.HTTPServer.ShutdownTimeout)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Error("server shutdown failed", sl.Err(err))
+	}
+
+	if err := storage.Close(); err != nil {
+		log.Error("failed to close storage", sl.Err(err))
+	}
+
+	log.Info("Server stopped")
 }
 
 func setupLogger(env string) *slog.Logger {
