@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/domain"
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/storage"
+	"vdzhagev/go-uptime-checker/internal/domain"
+	"vdzhagev/go-uptime-checker/internal/storage"
 )
 
 type Storage struct {

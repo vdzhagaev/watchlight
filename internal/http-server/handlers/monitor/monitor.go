@@ -4,8 +4,9 @@ import (
 	"context"
 	"log/slog"
 
+	"vdzhagev/go-uptime-checker/internal/domain"
+
 	"github.com/go-playground/validator/v10"
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/domain"
 )
 
 type MonitorFinder interface {

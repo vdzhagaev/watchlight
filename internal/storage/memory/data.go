@@ -1,6 +1,6 @@
 package memory
 
-import "gitlab.com/l0veme-projects/uptime-monitor/internal/domain"
+import "vdzhagev/go-uptime-checker/internal/domain"
 
 var monitors = []domain.Monitor{
 	{

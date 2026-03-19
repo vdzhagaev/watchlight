@@ -7,14 +7,15 @@ import (
 	"net/http"
 	"strconv"
 
+	"vdzhagev/go-uptime-checker/internal/domain"
+	"vdzhagev/go-uptime-checker/internal/lib/logger/sl"
+	"vdzhagev/go-uptime-checker/internal/storage"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/domain"
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/lib/logger/sl"
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/storage"
 
-	resp "gitlab.com/l0veme-projects/uptime-monitor/internal/lib/api/response"
+	resp "vdzhagev/go-uptime-checker/internal/lib/api/response"
 )
 
 type FindResponse struct {

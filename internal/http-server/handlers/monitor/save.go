@@ -5,15 +5,15 @@ import (
 	"log/slog"
 	"net/http"
 
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/domain"
-	resp "gitlab.com/l0veme-projects/uptime-monitor/internal/lib/api/response"
+	"vdzhagev/go-uptime-checker/internal/domain"
+	resp "vdzhagev/go-uptime-checker/internal/lib/api/response"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	"github.com/go-playground/validator/v10"
 
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/lib/logger/sl"
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/storage"
+	"vdzhagev/go-uptime-checker/internal/lib/logger/sl"
+	"vdzhagev/go-uptime-checker/internal/storage"
 )
 
 type CheckRequest struct {

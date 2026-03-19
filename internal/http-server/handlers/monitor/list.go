@@ -5,11 +5,12 @@ import (
 	"log/slog"
 	"net/http"
 
+	"vdzhagev/go-uptime-checker/internal/domain"
+	resp "vdzhagev/go-uptime-checker/internal/lib/api/response"
+	"vdzhagev/go-uptime-checker/internal/lib/logger/sl"
+
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/domain"
-	resp "gitlab.com/l0veme-projects/uptime-monitor/internal/lib/api/response"
-	"gitlab.com/l0veme-projects/uptime-monitor/internal/lib/logger/sl"
 )
 
 type ListResponse struct {

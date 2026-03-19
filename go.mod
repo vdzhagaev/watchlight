@@ -1,4 +1,4 @@
-module gitlab.com/l0veme-projects/uptime-monitor
+module vdzhagev/go-uptime-checker
 
 go 1.25.6
 
