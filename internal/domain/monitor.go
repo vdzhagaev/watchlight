@@ -31,6 +31,7 @@ type MonitorCheckConfig struct {
 	CheckType         CheckType `json:"check_type"`
 	IsEnabled         bool      `json:"is_enabled"`
 	CheckInterval     int       `json:"check_interval"`
+	CheckTimeout      int       `json:"check_timeout"`
 	MaxAttempts       int       `json:"max_attempts"`
 	DoErrorScreenshot bool      `json:"do_error_screenshot"`
 	Keywords          []string  `json:"keywords,omitempty"`
@@ -54,4 +55,13 @@ type MonitorCheckResult struct {
 	CheckedAt      time.Time     `json:"checked_at"`
 	Error          string        `json:"error,omitempty"`
 	ScreenshotPath string        `json:"screenshot_path,omitempty"`
+}
+
+func (m *Monitor) GetConfig(t CheckType) (MonitorCheckConfig, bool) {
+	for _, cfg := range m.CheckConfigs {
+		if cfg.CheckType == t {
+			return cfg, true
+		}
+	}
+	return MonitorCheckConfig{}, false
 }
