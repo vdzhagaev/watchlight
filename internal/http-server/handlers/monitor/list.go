@@ -21,21 +21,19 @@ type MonitorList interface {
 	GetMonitorList(ctx context.Context) ([]domain.Monitor, error)
 }
 
-func NewList(log *slog.Logger, monitorFinder MonitorList) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		const op = "http-server.handlers.monitor.NewList"
+func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
+	const op = "http-server.handlers.monitor.NewList"
 
-		log := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
+	log := h.log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
 
-		monitors, err := monitorFinder.GetMonitorList(r.Context())
+	monitors, err := h.finder.GetMonitorList(r.Context())
 
-		if err != nil {
-			msg := "failed to list monitors"
-			log.Error(msg, sl.Err(err))
-			render.JSON(w, r, resp.Error(msg))
-			return
-		}
-
-		render.JSON(w, r, ListResponse{resp.OK(), monitors})
+	if err != nil {
+		msg := "failed to list monitors"
+		log.Error(msg, sl.Err(err))
+		render.JSON(w, r, resp.Error(msg))
+		return
 	}
+
+	render.JSON(w, r, ListResponse{resp.OK(), monitors})
 }

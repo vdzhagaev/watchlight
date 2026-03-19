@@ -35,69 +35,67 @@ type SaveResponse struct {
 	ID int64 `json:"id"`
 }
 
-func NewSave(log *slog.Logger, monitorSaver MonitorSaver) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		const op = "http-server.handlers.monitor.save.New"
+func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
+	const op = "http-server.handlers.monitor.save.New"
 
-		log := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
+	log := h.log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
 
-		var req SaveRequest
+	var req SaveRequest
 
-		err := render.DecodeJSON(r.Body, &req)
-		if err != nil {
-			msg := "failed to decode request body"
-			log.Error(msg, sl.Err(err))
+	err := render.DecodeJSON(r.Body, &req)
+	if err != nil {
+		msg := "failed to decode request body"
+		log.Error(msg, sl.Err(err))
 
-			render.JSON(w, r, resp.Error(msg))
+		render.JSON(w, r, resp.Error(msg))
 
-			return
-		}
-
-		log.Info("request body decode successfully", slog.Any("request", req))
-
-		if err := validator.New().Struct(req); err != nil {
-			validateErr := err.(validator.ValidationErrors)
-			response := resp.ValidationError(validateErr)
-
-			log.Error(response.Error, sl.Err(err))
-
-			render.JSON(w, r, response)
-			return
-		}
-
-		m := domain.Monitor{
-			URL:  req.MonitorURL,
-			Name: req.MonitorName,
-		}
-
-		for _, c := range req.Checks {
-			m.CheckConfigs = append(m.CheckConfigs, domain.MonitorCheckConfig{
-				CheckType:         domain.CheckType(c.Type),
-				CheckInterval:     c.Interval,
-				MaxAttempts:       c.MaxAttempts,
-				DoErrorScreenshot: c.DoErrorScreenshot,
-				Keywords:          c.Keywords,
-				IsEnabled:         true, // on creation default true
-			})
-		}
-
-		err = monitorSaver.SaveMonitor(r.Context(), &m)
-
-		if errors.Is(err, storage.ErrMonitorExists) {
-			msg := "monitor already exists"
-			log.Info(msg, slog.String("url", req.MonitorURL))
-			render.JSON(w, r, resp.Error(msg))
-			return
-		}
-		if err != nil {
-			msg := "failed to add monitor"
-			log.Error(msg, sl.Err(err))
-			render.JSON(w, r, resp.Error(msg))
-			return
-		}
-
-		log.Info("monitor added", slog.Int64("id", m.ID))
-
-		render.JSON(w, r, SaveResponse{resp.OK(), m.ID})
+		return
 	}
+
+	log.Info("request body decode successfully", slog.Any("request", req))
+
+	if err := h.val.Struct(req); err != nil {
+		validateErr := err.(validator.ValidationErrors)
+		response := resp.ValidationError(validateErr)
+
+		log.Error(response.Error, sl.Err(err))
+
+		render.JSON(w, r, response)
+		return
+	}
+
+	m := domain.Monitor{
+		URL:  req.MonitorURL,
+		Name: req.MonitorName,
+	}
+
+	for _, c := range req.Checks {
+		m.CheckConfigs = append(m.CheckConfigs, domain.MonitorCheckConfig{
+			CheckType:         domain.CheckType(c.Type),
+			CheckInterval:     c.Interval,
+			MaxAttempts:       c.MaxAttempts,
+			DoErrorScreenshot: c.DoErrorScreenshot,
+			Keywords:          c.Keywords,
+			IsEnabled:         true, // on creation default true
+		})
+	}
+
+	err = h.saver.SaveMonitor(r.Context(), &m)
+
+	if errors.Is(err, storage.ErrMonitorExists) {
+		msg := "monitor already exists"
+		log.Info(msg, slog.String("url", req.MonitorURL))
+		render.JSON(w, r, resp.Error(msg))
+		return
+	}
+	if err != nil {
+		msg := "failed to add monitor"
+		log.Error(msg, sl.Err(err))
+		render.JSON(w, r, resp.Error(msg))
+		return
+	}
+
+	log.Info("monitor added", slog.Int64("id", m.ID))
+
+	render.JSON(w, r, SaveResponse{resp.OK(), m.ID})
 }

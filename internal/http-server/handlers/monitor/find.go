@@ -22,30 +22,28 @@ type FindResponse struct {
 	Monitor domain.Monitor `json:"monitor"`
 }
 
-func NewFind(log *slog.Logger, monitorFinder MonitorFinder) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		const op = "http-server.handlers.monitor.NewFind"
+func (h *MonitorHandler) Find(w http.ResponseWriter, r *http.Request) {
+	const op = "http-server.handlers.monitor.NewFind"
 
-		log := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
+	log := h.log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
 
-		idStr := chi.URLParam(r, "monitorID")
-		id, err := strconv.ParseInt(idStr, 10, 64)
+	idStr := chi.URLParam(r, "monitorID")
+	id, err := strconv.ParseInt(idStr, 10, 64)
 
-		monitor, err := monitorFinder.GetMonitor(r.Context(), id)
+	monitor, err := h.finder.GetMonitor(r.Context(), id)
 
-		if errors.Is(err, storage.ErrMonitorNotFound) {
-			render.Status(r, http.StatusNotFound)
-			render.JSON(w, r, resp.Error("not found"))
-			return
-		}
-
-		if err != nil {
-			msg := fmt.Sprintf("failed to find monitor by id: %d", id)
-			log.Error(msg, sl.Err(err))
-			render.JSON(w, r, resp.Error(msg))
-			return
-		}
-
-		render.JSON(w, r, FindResponse{resp.OK(), monitor})
+	if errors.Is(err, storage.ErrMonitorNotFound) {
+		render.Status(r, http.StatusNotFound)
+		render.JSON(w, r, resp.Error("not found"))
+		return
 	}
+
+	if err != nil {
+		msg := fmt.Sprintf("failed to find monitor by id: %d", id)
+		log.Error(msg, sl.Err(err))
+		render.JSON(w, r, resp.Error(msg))
+		return
+	}
+
+	render.JSON(w, r, FindResponse{resp.OK(), monitor})
 }
