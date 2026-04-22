@@ -1,12 +1,12 @@
-package monitor
+package monitorhandler
 
 import (
 	"errors"
 	"log/slog"
 	"net/http"
 
-	"vdzhagev/go-uptime-checker/internal/domain"
 	resp "vdzhagev/go-uptime-checker/internal/lib/api/response"
+	"vdzhagev/go-uptime-checker/internal/monitor"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
@@ -33,7 +33,7 @@ type SaveRequest struct {
 
 type SaveResponse struct {
 	resp.Response
-	ID int64 `json:"id"`
+	Monitor monitor.Monitor `json:"monitor"`
 }
 
 func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
@@ -65,14 +65,14 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m := domain.Monitor{
+	m := monitor.CreateMonitorInput{
 		URL:  req.MonitorURL,
 		Name: req.MonitorName,
 	}
 
 	for _, c := range req.Checks {
-		m.CheckConfigs = append(m.CheckConfigs, domain.MonitorCheckConfig{
-			CheckType:         domain.CheckType(c.Type),
+		m.CheckConfigs = append(m.CheckConfigs, monitor.CreateMonitorCheckConfigInput{
+			CheckType:         monitor.CheckType(c.Type),
 			CheckInterval:     c.Interval,
 			CheckTimeout:      c.Timeout,
 			MaxAttempts:       c.MaxAttempts,
@@ -82,7 +82,7 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	err = h.saver.SaveMonitor(r.Context(), &m)
+	createdM, err := h.svc.Create(r.Context(), m)
 
 	if errors.Is(err, storage.ErrMonitorExists) {
 		msg := "monitor already exists"
@@ -97,7 +97,7 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Info("monitor added", slog.Int64("id", m.ID))
+	log.Info("monitor added", slog.Int64("id", createdM.ID))
 
-	render.JSON(w, r, SaveResponse{resp.OK(), m.ID})
+	render.JSON(w, r, SaveResponse{resp.OK(), createdM})
 }

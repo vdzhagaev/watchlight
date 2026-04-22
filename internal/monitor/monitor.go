@@ -1,4 +1,4 @@
-package domain
+package monitor
 
 import "time"
 
@@ -26,8 +26,8 @@ const (
 )
 
 type MonitorCheckConfig struct {
-	ID                int       `json:"id"`
-	MonitorID         int       `json:"monitor_id"`
+	ID                int64     `json:"id"`
+	MonitorID         int64     `json:"monitor_id"`
 	CheckType         CheckType `json:"check_type"`
 	IsEnabled         bool      `json:"is_enabled"`
 	CheckInterval     int       `json:"check_interval"`
@@ -46,9 +46,9 @@ type Monitor struct {
 }
 
 type MonitorCheckResult struct {
-	ID             int           `json:"id"`
-	MonitorID      int           `json:"monitor_id"`
-	ConfigID       int           `json:"config_id"`
+	ID             int64         `json:"id"`
+	MonitorID      int64         `json:"monitor_id"`
+	ConfigID       int64         `json:"config_id"`
 	Status         CheckStatus   `json:"status"`
 	StatusCode     int           `json:"status_code"`
 	ResponseTime   time.Duration `json:"response_time"`

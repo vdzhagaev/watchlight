@@ -1,4 +1,4 @@
-package monitor
+package monitorhandler
 
 import (
 	"errors"
@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"vdzhagev/go-uptime-checker/internal/domain"
 	"vdzhagev/go-uptime-checker/internal/lib/logger/sl"
+	"vdzhagev/go-uptime-checker/internal/monitor"
 	"vdzhagev/go-uptime-checker/internal/storage"
 
 	"github.com/go-chi/chi/v5"
@@ -20,7 +20,7 @@ import (
 
 type FindResponse struct {
 	resp.Response
-	Monitor domain.Monitor `json:"monitor"`
+	Monitor monitor.Monitor `json:"monitor"`
 }
 
 func (h *MonitorHandler) Find(w http.ResponseWriter, r *http.Request) {
@@ -30,8 +30,15 @@ func (h *MonitorHandler) Find(w http.ResponseWriter, r *http.Request) {
 
 	idStr := chi.URLParam(r, "monitorID")
 	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		msg := fmt.Sprintf("failed to parse id: %s", idStr)
+		log.Error(msg, sl.Err(err))
+		render.JSON(w, r, resp.Error(msg))
+		return
 
-	monitor, err := h.finder.GetMonitor(r.Context(), id)
+	}
+
+	m, err := h.svc.Get(r.Context(), id)
 
 	if errors.Is(err, storage.ErrMonitorNotFound) {
 		render.Status(r, http.StatusNotFound)
@@ -46,5 +53,5 @@ func (h *MonitorHandler) Find(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	render.JSON(w, r, FindResponse{resp.OK(), monitor})
+	render.JSON(w, r, FindResponse{resp.OK(), m})
 }

@@ -1,13 +1,12 @@
-package monitor
+package monitorhandler
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 
-	"vdzhagev/go-uptime-checker/internal/domain"
 	resp "vdzhagev/go-uptime-checker/internal/lib/api/response"
 	"vdzhagev/go-uptime-checker/internal/lib/logger/sl"
+	"vdzhagev/go-uptime-checker/internal/monitor"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
@@ -15,11 +14,7 @@ import (
 
 type ListResponse struct {
 	resp.Response
-	MonitorList []domain.Monitor `json:"monitor_list"`
-}
-
-type MonitorList interface {
-	GetMonitorList(ctx context.Context) ([]domain.Monitor, error)
+	MonitorList []monitor.Monitor `json:"monitor_list"`
 }
 
 func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +22,7 @@ func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	log := h.log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
 
-	monitors, err := h.finder.GetMonitorList(r.Context())
+	monitors, err := h.svc.List(r.Context())
 
 	if err != nil {
 		msg := "failed to list monitors"

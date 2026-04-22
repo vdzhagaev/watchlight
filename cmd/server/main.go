@@ -10,10 +10,11 @@ import (
 	"syscall"
 
 	"vdzhagev/go-uptime-checker/internal/config"
-	"vdzhagev/go-uptime-checker/internal/http-server/handlers/monitor"
+	"vdzhagev/go-uptime-checker/internal/http-server/handlers/monitorhandler"
 	"vdzhagev/go-uptime-checker/internal/http-server/middleware/logger"
 	"vdzhagev/go-uptime-checker/internal/lib/logger/handlers/slogpretty"
 	"vdzhagev/go-uptime-checker/internal/lib/logger/sl"
+	"vdzhagev/go-uptime-checker/internal/monitor"
 	"vdzhagev/go-uptime-checker/internal/storage/memory"
 
 	"github.com/go-chi/chi/v5"
@@ -38,12 +39,6 @@ func main() {
 	defer stop()
 
 	// TODO: DB & Storage
-	// storage, err := sqlite.New(cfg.StoragePath)
-	// if err != nil {
-	// 	log.Error("failed to initialize storage", sl.Err(err))
-	// 	os.Exit(1)
-	// }
-
 	storage := memory.New()
 
 	// TODO: Workers: Scheduler & Checker
@@ -58,7 +53,8 @@ func main() {
 
 	val := validator.New()
 
-	mHandler := monitor.NewHandler(log, val, storage, storage)
+	mService := monitor.NewService(storage, log)
+	mHandler := monitorhandler.NewHandler(log, val, mService)
 
 	router.Route("/monitors", func(r chi.Router) {
 		r.Post("/", mHandler.Save)
