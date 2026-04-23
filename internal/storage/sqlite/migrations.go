@@ -10,18 +10,19 @@ func migrate(db *sql.DB) error {
 
 	q := `
   	CREATE TABLE IF NOT EXISTS monitors (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         url TEXT NOT NULL UNIQUE,
         status TEXT NOT NULL DEFAULT 'unknown'
     );
 
     CREATE TABLE IF NOT EXISTS monitor_check_configs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        monitor_id INTEGER NOT NULL,
+        id TEXT PRIMARY KEY,
+        monitor_id TEXT NOT NULL,
         check_type TEXT NOT NULL,
         is_enabled BOOLEAN NOT NULL DEFAULT(1),
         check_interval INTEGER NOT NULL DEFAULT 60,
+        check_timeout INTEGER NOT NULL DEFAULT 10,
         max_attempts INTEGER NOT NULL DEFAULT 3,
         do_error_screenshot BOOLEAN NOT NULL DEFAULT 0,
         keywords TEXT,
@@ -30,9 +31,9 @@ func migrate(db *sql.DB) error {
     );
 
     CREATE TABLE IF NOT EXISTS monitor_check_results (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        monitor_id INTEGER NOT NULL,
-        config_id INTEGER NOT NULL,
+        id TEXT PRIMARY KEY,
+        monitor_id TEXT NOT NULL,
+        config_id TEXT NOT NULL,
         status TEXT NOT NULL,
         status_code INTEGER,
         response_time_ns INTEGER,

@@ -5,109 +5,137 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"vdzhagev/go-uptime-checker/internal/monitor"
 	"vdzhagev/go-uptime-checker/internal/storage"
 
+	"github.com/google/uuid"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-func (s *Storage) SaveMonitor(ctx context.Context, m monitor.CreateMonitorInput) (monitor.Monitor, error) {
-	const op = "storage.sqlite.SaveMonitor"
+func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
+	const op = "storage.sqlite.CreateMonitor"
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	defer tx.Rollback()
 
-	res, err := tx.ExecContext(ctx,
-		"INSERT INTO monitors (name, url) VALUES (?, ?)",
-		m.Name, m.URL,
+	_, err = tx.ExecContext(ctx,
+		"INSERT INTO monitors (id, name, url, status) VALUES (?, ?)",
+		m.ID, m.Name, m.URL, m.Status,
 	)
 	if err != nil {
 		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-			return monitor.Monitor{}, fmt.Errorf("%s: insert monitor: %w", op, storage.ErrMonitorExists)
+			return fmt.Errorf("%s: insert monitor: %w", op, storage.ErrMonitorExists)
 		}
-		return monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return monitor.Monitor{}, fmt.Errorf("%s: failed to get last insert id: %w", op, err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO monitor_check_configs
-		(monitor_id, check_type, is_enabled, check_interval, max_attempts, do_error_screenshot, keywords)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		(id, monitor_id, check_type,
+		is_enabled, check_interval, check_timeout,
+		max_attempts, do_error_screenshot, keywords)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 
 	if err != nil {
-		return monitor.Monitor{}, fmt.Errorf("%s: prepare stmt: %w", op, err)
+		return fmt.Errorf("%s: prepare stmt: %w", op, err)
 	}
 	defer stmt.Close()
 
-	configs := make([]monitor.MonitorCheckConfig, 0, len(m.CheckConfigs))
 	for _, cfg := range m.CheckConfigs {
 		keywordsJSON, err := json.Marshal(cfg.Keywords)
 		if err != nil {
-			return monitor.Monitor{}, fmt.Errorf("%s: json config keywords: %w", op, err)
+			return fmt.Errorf("%s: json config keywords: %w", op, err)
 		}
 
-		cfgRes, err := stmt.ExecContext(ctx,
-			id,
+		_, err = stmt.ExecContext(ctx,
+			cfg.ID,
+			m.ID,
 			cfg.CheckType,
 			cfg.IsEnabled,
 			cfg.CheckInterval,
+			cfg.CheckTimeout,
 			cfg.MaxAttempts,
 			cfg.DoErrorScreenshot,
 			string(keywordsJSON),
 		)
 		if err != nil {
-			return monitor.Monitor{}, fmt.Errorf("%s: insert config: %w", op, err)
+			return fmt.Errorf("%s: insert config: %w", op, err)
 		}
-		cfgID, err := cfgRes.LastInsertId()
-		if err != nil {
-			return monitor.Monitor{}, fmt.Errorf("%s: config last insert id: %w", op, err)
-		}
-
-		configs = append(configs, monitor.MonitorCheckConfig{
-			ID:                cfgID,
-			MonitorID:         id,
-			CheckType:         cfg.CheckType,
-			IsEnabled:         cfg.IsEnabled,
-			CheckInterval:     cfg.CheckInterval,
-			CheckTimeout:      cfg.CheckTimeout,
-			MaxAttempts:       cfg.MaxAttempts,
-			DoErrorScreenshot: cfg.DoErrorScreenshot,
-			Keywords:          cfg.Keywords,
-		})
 	}
 
 	if err := tx.Commit(); err != nil {
-		return monitor.Monitor{}, fmt.Errorf("%s: commit: %w", op, err)
+		return fmt.Errorf("%s: commit: %w", op, err)
 	}
 
-	return monitor.Monitor{
-		ID:           id,
-		Name:         m.Name,
-		URL:          m.URL,
-		Status:       monitor.MonitorUnknown,
-		CheckConfigs: configs,
-	}, nil
+	return nil
 }
 
-func (s *Storage) GetMonitor(ctx context.Context, id int64) (monitor.Monitor, error) {
+func (s *Storage) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+	const op = "storage.sqlite.UpdateMonitor"
+
+	columns := []string{}
+	args := []any{}
+
+	if in.Name != nil {
+		columns = append(columns, "name = ?")
+		args = append(args, *in.Name)
+	}
+	if in.URL != nil {
+		columns = append(columns, "url = ?")
+		args = append(args, *in.URL)
+	}
+	if in.Status != nil {
+		columns = append(columns, "status = ?")
+		args = append(args, *in.Status)
+	}
+
+	if len(columns) == 0 {
+		return s.GetMonitor(ctx, id)
+	}
+
+	args = append(args, id)
+
+	query := fmt.Sprintf(
+		"UPDATE monitors SET %s WHERE id = ?",
+		strings.Join(columns, ", "),
+	)
+
+	res, err := s.db.ExecContext(ctx, query, args...)
+
+	if err != nil {
+		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			return monitor.Monitor{}, fmt.Errorf("%s: %w", op, storage.ErrMonitorExists)
+		}
+		return monitor.Monitor{}, fmt.Errorf("%s: update monitor: %w", op, err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return monitor.Monitor{}, fmt.Errorf("%s: rows affected: %w", op, err)
+	}
+	if affected == 0 {
+		return monitor.Monitor{}, storage.ErrMonitorNotFound
+	}
+	return s.GetMonitor(ctx, id)
+}
+
+func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor, error) {
 	const op = "storage.sqlite.GetMonitor"
 
 	query := `
 		SELECT
 			m.id, m.name, m.url, m.status,
 			c.id, c.check_type, c.is_enabled, c.check_interval,
-			c.max_attempts, c.do_error_screenshot, c.keywords
+			c.check_timeout, c.max_attempts, c.do_error_screenshot,
+			c.keywords
 		FROM monitors AS m
 		LEFT JOIN monitor_check_configs AS c ON m.id = c.monitor_id
 		WHERE m.id = ?
@@ -133,12 +161,12 @@ func (s *Storage) GetMonitor(ctx context.Context, id int64) (monitor.Monitor, er
 
 	for rows.Next() {
 		var (
-			mID     int64
+			mID     uuid.NullUUID
 			mName   string
 			mURL    string
 			mStatus monitor.MonitorStatus
 
-			cID                sql.NullInt64
+			cID                uuid.NullUUID
 			cType              sql.NullString
 			cEnabled           sql.NullBool
 			cInterval          sql.NullInt64
@@ -157,7 +185,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id int64) (monitor.Monitor, er
 
 		if !found {
 			m = monitor.Monitor{
-				ID:           mID,
+				ID:           mID.UUID,
 				Name:         mName,
 				URL:          mURL,
 				Status:       mStatus,
@@ -168,8 +196,8 @@ func (s *Storage) GetMonitor(ctx context.Context, id int64) (monitor.Monitor, er
 
 		if cID.Valid {
 			cfg := monitor.MonitorCheckConfig{
-				ID:                cID.Int64,
-				MonitorID:         mID,
+				ID:                cID.UUID,
+				MonitorID:         mID.UUID,
 				CheckType:         monitor.CheckType(cType.String),
 				IsEnabled:         cEnabled.Bool,
 				CheckInterval:     int(cInterval.Int64),

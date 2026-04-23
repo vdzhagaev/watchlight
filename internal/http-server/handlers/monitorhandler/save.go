@@ -17,12 +17,13 @@ import (
 )
 
 type CheckRequest struct {
-	Type              string   `json:"type" validate:"required,oneof=http ping custom"`
+	Type              string   `json:"type" validate:"required,oneof=http ping headless"`
 	Interval          int      `json:"interval" validate:"required,min=10"`
 	Timeout           int      `json:"timeout" validate:"required,min=2"`
 	MaxAttempts       int      `json:"max_attempts" validate:"required,min=1"`
 	DoErrorScreenshot bool     `json:"do_error_screenshot"`
 	Keywords          []string `json:"keywords,omitempty"`
+	IsEnabled         *bool    `json:"is_enabled,omitempty"`
 }
 
 type SaveRequest struct {
@@ -78,7 +79,7 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 			MaxAttempts:       c.MaxAttempts,
 			DoErrorScreenshot: c.DoErrorScreenshot,
 			Keywords:          c.Keywords,
-			IsEnabled:         true, // on creation default true
+			IsEnabled:         c.IsEnabled,
 		})
 	}
 
@@ -97,7 +98,11 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Info("monitor added", slog.Int64("id", createdM.ID))
+	log.Info("monitor added",
+		slog.String("id", createdM.ID.String()),
+		slog.String("name", createdM.Name),
+		slog.String("url", createdM.URL),
+	)
 
 	render.JSON(w, r, SaveResponse{resp.OK(), createdM})
 }

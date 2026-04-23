@@ -1,6 +1,11 @@
 package monitor
 
-import "time"
+import (
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type MonitorStatus string
 
@@ -26,8 +31,8 @@ const (
 )
 
 type MonitorCheckConfig struct {
-	ID                int64     `json:"id"`
-	MonitorID         int64     `json:"monitor_id"`
+	ID                uuid.UUID `json:"id"`
+	MonitorID         uuid.UUID `json:"monitor_id"`
 	CheckType         CheckType `json:"check_type"`
 	IsEnabled         bool      `json:"is_enabled"`
 	CheckInterval     int       `json:"check_interval"`
@@ -38,7 +43,7 @@ type MonitorCheckConfig struct {
 }
 
 type Monitor struct {
-	ID           int64                `json:"id"`
+	ID           uuid.UUID            `json:"id"`
 	Name         string               `json:"name"`
 	URL          string               `json:"url"`
 	Status       MonitorStatus        `json:"status"`
@@ -46,9 +51,9 @@ type Monitor struct {
 }
 
 type MonitorCheckResult struct {
-	ID             int64         `json:"id"`
-	MonitorID      int64         `json:"monitor_id"`
-	ConfigID       int64         `json:"config_id"`
+	ID             uuid.UUID     `json:"id"`
+	MonitorID      uuid.UUID     `json:"monitor_id"`
+	ConfigID       uuid.UUID     `json:"config_id"`
 	Status         CheckStatus   `json:"status"`
 	StatusCode     int           `json:"status_code"`
 	ResponseTime   time.Duration `json:"response_time"`
@@ -56,6 +61,11 @@ type MonitorCheckResult struct {
 	Error          string        `json:"error,omitempty"`
 	ScreenshotPath string        `json:"screenshot_path,omitempty"`
 }
+
+var (
+	ErrMonitorEmptyName = errors.New("monitor name can not be empty")
+	ErrMonitorEmptyURL  = errors.New("monitor url can not be empty")
+)
 
 func (m *Monitor) GetConfig(t CheckType) (MonitorCheckConfig, bool) {
 	for _, cfg := range m.CheckConfigs {

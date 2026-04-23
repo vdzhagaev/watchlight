@@ -3,6 +3,8 @@ package monitor
 import (
 	"context"
 	"log/slog"
+
+	"github.com/google/uuid"
 )
 
 type Service struct {
@@ -15,10 +17,18 @@ func NewService(repo Repository, log *slog.Logger) *Service {
 }
 
 func (svc *Service) Create(ctx context.Context, in CreateMonitorInput) (Monitor, error) {
-	return svc.repo.SaveMonitor(ctx, in)
+	m, err := New(in)
+	if err != nil {
+		return Monitor{}, err
+	}
+	return svc.repo.CreateMonitor(ctx, m)
 }
 
-func (svc *Service) Get(ctx context.Context, id int64) (Monitor, error) {
+func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorInput) (Monitor, error) {
+	return svc.repo.UpdateMonitor(ctx, id, in)
+}
+
+func (svc *Service) Get(ctx context.Context, id uuid.UUID) (Monitor, error) {
 	return svc.repo.GetMonitor(ctx, id)
 }
 
@@ -26,6 +36,6 @@ func (svc *Service) List(ctx context.Context) ([]Monitor, error) {
 	return svc.repo.GetMonitorList(ctx)
 }
 
-func (svc *Service) Delete(ctx context.Context, id int64) error {
+func (svc *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	return svc.repo.DeleteMonitor(ctx, id)
 }

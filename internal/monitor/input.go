@@ -8,7 +8,7 @@ type CreateMonitorInput struct {
 
 type CreateMonitorCheckConfigInput struct {
 	CheckType         CheckType
-	IsEnabled         bool
+	IsEnabled         *bool
 	CheckInterval     int
 	CheckTimeout      int
 	MaxAttempts       int

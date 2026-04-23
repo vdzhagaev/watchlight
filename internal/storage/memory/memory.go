@@ -7,17 +7,17 @@ import (
 
 	"vdzhagev/go-uptime-checker/internal/monitor"
 	"vdzhagev/go-uptime-checker/internal/storage"
+
+	"github.com/google/uuid"
 )
 
 type Storage struct {
 	mu       sync.RWMutex
-	lastID   int64
 	monitors []monitor.Monitor
 }
 
 func New() *Storage {
 	return &Storage{
-		lastID:   10,
 		monitors: monitors,
 	}
 }
@@ -26,7 +26,7 @@ func (s *Storage) Close() error {
 	return nil
 }
 
-func (s *Storage) GetMonitor(ctx context.Context, id int64) (monitor.Monitor, error) {
+func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -38,36 +38,14 @@ func (s *Storage) GetMonitor(ctx context.Context, id int64) (monitor.Monitor, er
 	return monitor.Monitor{}, storage.ErrMonitorNotFound
 }
 
-func (s *Storage) SaveMonitor(ctx context.Context, m monitor.CreateMonitorInput) (monitor.Monitor, error) {
+func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) (monitor.Monitor, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	s.lastID++
-	checks := make([]monitor.MonitorCheckConfig, len(m.CheckConfigs))
-	for i, chk := range m.CheckConfigs {
-		checks[i] = monitor.MonitorCheckConfig{
-			ID:                int64(i),
-			MonitorID:         s.lastID,
-			CheckType:         chk.CheckType,
-			IsEnabled:         chk.IsEnabled,
-			CheckInterval:     chk.CheckInterval,
-			CheckTimeout:      chk.CheckTimeout,
-			MaxAttempts:       chk.MaxAttempts,
-			DoErrorScreenshot: chk.DoErrorScreenshot,
-			Keywords:          chk.Keywords,
-		}
-	}
-	nM := monitor.Monitor{
-		ID:           s.lastID,
-		URL:          m.URL,
-		Name:         m.Name,
-		CheckConfigs: checks,
-	}
-	s.monitors = append(s.monitors, nM)
-	return nM, nil
+	s.monitors = append(s.monitors, m)
+	return m, nil
 }
 
-func (s *Storage) UpdateMonitor(ctx context.Context, id int64, in monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+func (s *Storage) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) (monitor.Monitor, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, m := range s.monitors {
@@ -95,7 +73,7 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 	return s.monitors, nil
 }
 
-func (s *Storage) DeleteMonitor(ctx context.Context, id int64) error {
+func (s *Storage) DeleteMonitor(ctx context.Context, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	l := len(s.monitors)

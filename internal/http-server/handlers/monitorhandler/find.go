@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"vdzhagev/go-uptime-checker/internal/lib/logger/sl"
 	"vdzhagev/go-uptime-checker/internal/monitor"
@@ -14,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
+	"github.com/google/uuid"
 
 	resp "vdzhagev/go-uptime-checker/internal/lib/api/response"
 )
@@ -29,7 +29,7 @@ func (h *MonitorHandler) Find(w http.ResponseWriter, r *http.Request) {
 	log := h.log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
 
 	idStr := chi.URLParam(r, "monitorID")
-	id, err := strconv.ParseInt(idStr, 10, 64)
+	id, err := uuid.Parse(idStr)
 	if err != nil {
 		msg := fmt.Sprintf("failed to parse id: %s", idStr)
 		log.Error(msg, sl.Err(err))
@@ -47,7 +47,7 @@ func (h *MonitorHandler) Find(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		msg := fmt.Sprintf("failed to find monitor by id: %d", id)
+		msg := fmt.Sprintf("failed to find monitor by id: %s", idStr)
 		log.Error(msg, sl.Err(err))
 		render.JSON(w, r, resp.Error(msg))
 		return
