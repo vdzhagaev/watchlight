@@ -1,7 +1,7 @@
 package memory
 
 import (
-	"vdzhagev/go-uptime-checker/internal/monitor"
+	"github.com/vdzhagaev/watchlight/internal/monitor"
 
 	"github.com/google/uuid"
 )

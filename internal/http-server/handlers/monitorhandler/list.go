@@ -4,9 +4,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	resp "vdzhagev/go-uptime-checker/internal/lib/api/response"
-	"vdzhagev/go-uptime-checker/internal/lib/logger/sl"
-	"vdzhagev/go-uptime-checker/internal/monitor"
+	resp "github.com/vdzhagaev/watchlight/internal/lib/api/response"
+	"github.com/vdzhagaev/watchlight/internal/lib/logger/sl"
+	"github.com/vdzhagaev/watchlight/internal/monitor"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"

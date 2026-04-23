@@ -6,16 +6,16 @@ import (
 	"log/slog"
 	"net/http"
 
-	"vdzhagev/go-uptime-checker/internal/lib/logger/sl"
-	"vdzhagev/go-uptime-checker/internal/monitor"
-	"vdzhagev/go-uptime-checker/internal/storage"
+	"github.com/vdzhagaev/watchlight/internal/lib/logger/sl"
+	"github.com/vdzhagaev/watchlight/internal/monitor"
+	"github.com/vdzhagaev/watchlight/internal/storage"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	"github.com/google/uuid"
 
-	resp "vdzhagev/go-uptime-checker/internal/lib/api/response"
+	resp "github.com/vdzhagaev/watchlight/internal/lib/api/response"
 )
 
 type FindResponse struct {

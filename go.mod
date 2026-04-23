@@ -1,4 +1,4 @@
-module vdzhagev/go-uptime-checker
+module github.com/vdzhagaev/watchlight
 
 go 1.25.6
 

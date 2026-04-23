@@ -2,7 +2,7 @@ package monitorhandler
 
 import (
 	"log/slog"
-	"vdzhagev/go-uptime-checker/internal/monitor"
+	"github.com/vdzhagaev/watchlight/internal/monitor"
 
 	"github.com/go-playground/validator/v10"
 )

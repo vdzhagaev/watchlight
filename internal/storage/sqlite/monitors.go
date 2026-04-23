@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"vdzhagev/go-uptime-checker/internal/monitor"
-	"vdzhagev/go-uptime-checker/internal/storage"
+	"github.com/vdzhagaev/watchlight/internal/monitor"
+	"github.com/vdzhagaev/watchlight/internal/storage"
 
 	"github.com/google/uuid"
 	"modernc.org/sqlite"
