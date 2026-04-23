@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 	"time"
-	"vdzhagev/go-uptime-checker/internal/lib/netutil"
+	"github.com/vdzhagaev/watchlight/internal/lib/netutil"
 )
 
 func CheckTCP(ctx context.Context, req CheckRequest) (time.Duration, error) {
