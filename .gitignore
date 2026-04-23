@@ -5,3 +5,5 @@ uptime-monitor
 
 vendor/
 *.log
+
+storage/*
