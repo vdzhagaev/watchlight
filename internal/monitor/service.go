@@ -6,11 +6,11 @@ import (
 )
 
 type Service struct {
-	repo Repositoty
+	repo Repository
 	log  *slog.Logger
 }
 
-func NewService(repo Repositoty, log *slog.Logger) *Service {
+func NewService(repo Repository, log *slog.Logger) *Service {
 	return &Service{repo: repo, log: log}
 }
 
