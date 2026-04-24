@@ -40,6 +40,7 @@ func main() {
 
 	// TODO: DB & Storage
 	storage := memory.New()
+	storage.Fill(memory.SampleMonitors)
 
 	// TODO: Workers: Scheduler & Checker
 	router := chi.NewRouter()

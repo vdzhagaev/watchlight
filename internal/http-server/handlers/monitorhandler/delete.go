@@ -18,7 +18,6 @@ func (h *MonitorHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	const op = "http-server.handlers.monitor.delete"
 	log := h.log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
 
-
 	idStr := chi.URLParam(r, "monitorID")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
