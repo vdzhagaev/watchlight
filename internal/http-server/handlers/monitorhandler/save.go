@@ -16,10 +16,10 @@ import (
 )
 
 type CheckRequest struct {
-	Type              string   `json:"type" validate:"required,oneof=http ping headless"`
-	Interval          int      `json:"interval" validate:"required,min=10"`
-	Timeout           int      `json:"timeout" validate:"required,min=2"`
-	MaxAttempts       int      `json:"max_attempts" validate:"required,min=1"`
+	Type string `json:"type" validate:"required,oneof=http ping headless"`
+	Interval          int      `json:"interval,omitempty" validate:"omitempty,min=10"`
+	Timeout           int      `json:"timeout,omitempty" validate:"omitempty,min=2"`
+	MaxAttempts       int      `json:"max_attempts,omitempty" validate:"omitempty,min=1"`
 	DoErrorScreenshot bool     `json:"do_error_screenshot"`
 	Keywords          []string `json:"keywords,omitempty"`
 	IsEnabled         *bool    `json:"is_enabled,omitempty"`
@@ -28,7 +28,7 @@ type CheckRequest struct {
 type SaveRequest struct {
 	MonitorURL  string         `json:"url" validate:"required,url"`
 	MonitorName string         `json:"name,omitempty"`
-	Checks      []CheckRequest `json:"checks" validate:"required,dive"`
+	Checks      []CheckRequest `json:"checks" validate:"required,min=1,dive"`
 }
 
 type SaveResponse struct {

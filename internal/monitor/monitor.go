@@ -6,6 +6,16 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	DefaultCheckInterval = 60
+	DefaultCheckTimeout  = 10
+	DefaultMaxAttempts   = 3
+
+	MinCheckInterval = 10
+	MinCheckTimeout  = 2
+	MinMaxAttempts   = 1
+)
+
 type MonitorStatus string
 
 const (
