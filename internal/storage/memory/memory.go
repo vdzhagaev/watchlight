@@ -16,9 +16,13 @@ type Storage struct {
 }
 
 func New() *Storage {
-	return &Storage{
-		monitors: monitors,
-	}
+	return &Storage{}
+}
+
+func (s *Storage) Fill(monitors []monitor.Monitor) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.monitors = append(s.monitors, monitors...)
 }
 
 func (s *Storage) Close() error {

@@ -21,7 +21,7 @@ var (
 	idMon10 = newID("01931d4f-0000-7000-8000-00000000000a")
 )
 
-var monitors = []monitor.Monitor{
+var SampleMonitors = []monitor.Monitor{
 	{
 		ID:     idMon1,
 		Name:   "Google Search",
