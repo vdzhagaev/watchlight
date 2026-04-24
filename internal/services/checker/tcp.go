@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"time"
+
 	"github.com/vdzhagaev/watchlight/internal/lib/netutil"
 )
 

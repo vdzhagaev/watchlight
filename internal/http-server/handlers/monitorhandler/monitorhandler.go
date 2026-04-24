@@ -2,6 +2,7 @@ package monitorhandler
 
 import (
 	"log/slog"
+
 	"github.com/vdzhagaev/watchlight/internal/monitor"
 
 	"github.com/go-playground/validator/v10"
