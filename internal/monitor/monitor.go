@@ -1,7 +1,6 @@
 package monitor
 
 import (
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -62,13 +61,6 @@ type MonitorCheckResult struct {
 	ScreenshotPath string        `json:"screenshot_path,omitempty"`
 }
 
-var (
-	ErrMonitorEmptyName = errors.New("monitor name can not be empty")
-	ErrMonitorEmptyURL  = errors.New("monitor url can not be empty")
-	ErrMonitorNotFound  = errors.New("monitor not found")
-	ErrMonitorExists    = errors.New("monitor already exists")
-)
-
 func (m *Monitor) GetConfig(t CheckType) (MonitorCheckConfig, bool) {
 	for _, cfg := range m.CheckConfigs {
 		if cfg.CheckType == t {
@@ -76,4 +68,83 @@ func (m *Monitor) GetConfig(t CheckType) (MonitorCheckConfig, bool) {
 		}
 	}
 	return MonitorCheckConfig{}, false
+}
+
+func New(in CreateMonitorInput) (Monitor, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return Monitor{}, err
+	}
+	if in.Name == "" {
+		return Monitor{}, ErrMonitorEmptyName
+	}
+
+	if in.URL == "" {
+		return Monitor{}, ErrMonitorEmptyURL
+	}
+
+	if len(in.CheckConfigs) == 0 {
+		return Monitor{}, ErrMonitorNoChecks
+	}
+
+	configs, err := buildConfigs(id, in.CheckConfigs)
+	if err != nil {
+		return Monitor{}, err
+	}
+
+	return Monitor{
+		ID:           id,
+		Name:         in.Name,
+		URL:          in.URL,
+		Status:       MonitorUnknown,
+		CheckConfigs: configs,
+	}, nil
+}
+
+func buildConfigs(id uuid.UUID, configs []CreateMonitorCheckConfigInput) ([]MonitorCheckConfig, error) {
+	var checks []MonitorCheckConfig
+	for _, chk := range configs {
+		checkEnable := true
+		if chk.IsEnabled != nil {
+			checkEnable = *chk.IsEnabled
+		}
+
+		interval := chk.CheckInterval
+		if interval == 0 {
+			interval = DefaultCheckInterval
+		} else if interval < MinCheckInterval {
+			return nil, ErrCheckIntervalTooSmall
+		}
+
+		timeout := chk.CheckTimeout
+		if timeout == 0 {
+			timeout = DefaultCheckTimeout
+		} else if timeout < MinCheckTimeout {
+			return nil, ErrCheckTimeoutTooSmall
+		}
+
+		maxAttempts := chk.MaxAttempts
+		if maxAttempts == 0 {
+			maxAttempts = DefaultMaxAttempts
+		} else if maxAttempts < MinMaxAttempts {
+			return nil, ErrMaxAttemptsTooSmall
+		}
+
+		checkID, err := uuid.NewV7()
+		if err != nil {
+			return nil, err
+		}
+		checks = append(checks, MonitorCheckConfig{
+			ID:                checkID,
+			MonitorID:         id,
+			CheckType:         chk.CheckType,
+			IsEnabled:         checkEnable,
+			CheckInterval:     interval,
+			CheckTimeout:      timeout,
+			MaxAttempts:       maxAttempts,
+			DoErrorScreenshot: chk.DoErrorScreenshot,
+			Keywords:          chk.Keywords,
+		})
+	}
+	return checks, nil
 }
