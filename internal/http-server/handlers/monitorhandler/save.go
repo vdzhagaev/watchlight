@@ -13,7 +13,6 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	"github.com/vdzhagaev/watchlight/internal/lib/logger/sl"
-	"github.com/vdzhagaev/watchlight/internal/storage"
 )
 
 type CheckRequest struct {
@@ -46,23 +45,22 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 
 	err := render.DecodeJSON(r.Body, &req)
 	if err != nil {
-		msg := "failed to decode request body"
-		log.Error(msg, sl.Err(err))
-
-		render.JSON(w, r, resp.Error(msg))
-
+		log.Error("failed to decode request body", sl.Err(err))
+		resp.WriteError(w, r, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	log.Info("request body decode successfully", slog.Any("request", req))
 
 	if err := h.val.Struct(req); err != nil {
-		validateErr := err.(validator.ValidationErrors)
-		response := resp.ValidationError(validateErr)
-
-		log.Error(response.Error, sl.Err(err))
-
-		render.JSON(w, r, response)
+		var validateErr validator.ValidationErrors
+		if errors.As(err, &validateErr) {
+			log.Error("validation failed", sl.Err(err))
+			resp.WriteValidationError(w, r, validateErr)
+			return
+		}
+		log.Error("invalid request", sl.Err(err))
+		resp.WriteError(w, r, http.StatusBadRequest, "invalid request")
 		return
 	}
 
@@ -85,16 +83,14 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 
 	createdM, err := h.svc.Create(r.Context(), m)
 
-	if errors.Is(err, storage.ErrMonitorExists) {
-		msg := "monitor already exists"
-		log.Info(msg, slog.String("url", req.MonitorURL))
-		render.JSON(w, r, resp.Error(msg))
+	if errors.Is(err, monitor.ErrMonitorExists) {
+		log.Info("monitor already exists", slog.String("url", req.MonitorURL))
+		resp.WriteError(w, r, http.StatusConflict, "monitor already exists")
 		return
 	}
 	if err != nil {
-		msg := "failed to add monitor"
-		log.Error(msg, sl.Err(err))
-		render.JSON(w, r, resp.Error(msg))
+		log.Error("failed to create monitor", sl.Err(err))
+		resp.WriteError(w, r, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -104,5 +100,6 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 		slog.String("url", createdM.URL),
 	)
 
+	render.Status(r, http.StatusCreated)
 	render.JSON(w, r, SaveResponse{resp.OK(), createdM})
 }
