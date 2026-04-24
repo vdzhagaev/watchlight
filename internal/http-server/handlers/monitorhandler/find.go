@@ -2,13 +2,11 @@ package monitorhandler
 
 import (
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/vdzhagaev/watchlight/internal/lib/logger/sl"
 	"github.com/vdzhagaev/watchlight/internal/monitor"
-	"github.com/vdzhagaev/watchlight/internal/storage"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -31,25 +29,21 @@ func (h *MonitorHandler) Find(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "monitorID")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		msg := fmt.Sprintf("failed to parse id: %s", idStr)
-		log.Error(msg, sl.Err(err))
-		render.JSON(w, r, resp.Error(msg))
+		log.Error("failed to parse id", slog.String("id", idStr), sl.Err(err))
+		resp.WriteError(w, r, http.StatusBadRequest, "invalid id")
 		return
-
 	}
 
 	m, err := h.svc.Get(r.Context(), id)
 
-	if errors.Is(err, storage.ErrMonitorNotFound) {
-		render.Status(r, http.StatusNotFound)
-		render.JSON(w, r, resp.Error("not found"))
+	if errors.Is(err, monitor.ErrMonitorNotFound) {
+		resp.WriteError(w, r, http.StatusNotFound, "monitor not found")
 		return
 	}
 
 	if err != nil {
-		msg := fmt.Sprintf("failed to find monitor by id: %s", idStr)
-		log.Error(msg, sl.Err(err))
-		render.JSON(w, r, resp.Error(msg))
+		log.Error("failed to find monitor", sl.Err(err))
+		resp.WriteError(w, r, http.StatusInternalServerError, "internal error")
 		return
 	}
 

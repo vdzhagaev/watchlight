@@ -58,6 +58,7 @@ func main() {
 
 	router.Route("/monitors", func(r chi.Router) {
 		r.Post("/", mHandler.Save)
+		r.Patch("/{monitorID}", mHandler.Patch)
 		r.Get("/", mHandler.List)
 		r.Get("/{monitorID}", mHandler.Find)
 	})

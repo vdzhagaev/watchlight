@@ -65,6 +65,8 @@ type MonitorCheckResult struct {
 var (
 	ErrMonitorEmptyName = errors.New("monitor name can not be empty")
 	ErrMonitorEmptyURL  = errors.New("monitor url can not be empty")
+	ErrMonitorNotFound  = errors.New("monitor not found")
+	ErrMonitorExists    = errors.New("monitor already exists")
 )
 
 func (m *Monitor) GetConfig(t CheckType) (MonitorCheckConfig, bool) {

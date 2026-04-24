@@ -2,8 +2,10 @@ package response
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
+	"github.com/go-chi/render"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -23,6 +25,16 @@ func OK() Response {
 
 func Error(msg string) Response {
 	return Response{Status: StatusError, Error: msg}
+}
+
+func WriteError(w http.ResponseWriter, r *http.Request, code int, msg string) {
+	render.Status(r, code)
+	render.JSON(w, r, Error(msg))
+}
+
+func WriteValidationError(w http.ResponseWriter, r *http.Request, errs validator.ValidationErrors) {
+	render.Status(r, http.StatusBadRequest)
+	render.JSON(w, r, ValidationError(errs))
 }
 
 func ValidationError(errors validator.ValidationErrors) Response {

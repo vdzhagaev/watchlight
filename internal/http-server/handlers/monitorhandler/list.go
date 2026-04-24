@@ -25,9 +25,8 @@ func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
 	monitors, err := h.svc.List(r.Context())
 
 	if err != nil {
-		msg := "failed to list monitors"
-		log.Error(msg, sl.Err(err))
-		render.JSON(w, r, resp.Error(msg))
+		log.Error("failed to list monitors", sl.Err(err))
+		resp.WriteError(w, r, http.StatusInternalServerError, "internal error")
 		return
 	}
 
