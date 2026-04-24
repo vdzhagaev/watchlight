@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/vdzhagaev/watchlight/internal/monitor"
-	"github.com/vdzhagaev/watchlight/internal/storage"
 
 	"github.com/google/uuid"
 	"modernc.org/sqlite"
@@ -31,7 +30,7 @@ func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 	)
 	if err != nil {
 		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-			return fmt.Errorf("%s: insert monitor: %w", op, storage.ErrMonitorExists)
+			return fmt.Errorf("%s: insert monitor: %w", op, monitor.ErrMonitorExists)
 		}
 		return fmt.Errorf("%s: %w", op, err)
 	}
@@ -112,7 +111,7 @@ func (s *Storage) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.Up
 
 	if err != nil {
 		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-			return monitor.Monitor{}, fmt.Errorf("%s: %w", op, storage.ErrMonitorExists)
+			return monitor.Monitor{}, fmt.Errorf("%s: %w", op, monitor.ErrMonitorExists)
 		}
 		return monitor.Monitor{}, fmt.Errorf("%s: update monitor: %w", op, err)
 	}
@@ -122,7 +121,7 @@ func (s *Storage) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.Up
 		return monitor.Monitor{}, fmt.Errorf("%s: rows affected: %w", op, err)
 	}
 	if affected == 0 {
-		return monitor.Monitor{}, storage.ErrMonitorNotFound
+		return monitor.Monitor{}, monitor.ErrMonitorNotFound
 	}
 	return s.GetMonitor(ctx, id)
 }
@@ -219,7 +218,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 	}
 
 	if !found {
-		return monitor.Monitor{}, storage.ErrMonitorNotFound
+		return monitor.Monitor{}, monitor.ErrMonitorNotFound
 	}
 
 	if err := tx.Commit(); err != nil {

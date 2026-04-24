@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/vdzhagaev/watchlight/internal/monitor"
-	"github.com/vdzhagaev/watchlight/internal/storage"
 
 	"github.com/google/uuid"
 )
@@ -35,7 +34,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 			return m, nil
 		}
 	}
-	return monitor.Monitor{}, storage.ErrMonitorNotFound
+	return monitor.Monitor{}, monitor.ErrMonitorNotFound
 }
 
 func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) (monitor.Monitor, error) {
@@ -63,7 +62,7 @@ func (s *Storage) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.Up
 			return m, nil
 		}
 	}
-	return monitor.Monitor{}, storage.ErrMonitorNotFound
+	return monitor.Monitor{}, monitor.ErrMonitorNotFound
 }
 
 func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error) {
@@ -81,7 +80,7 @@ func (s *Storage) DeleteMonitor(ctx context.Context, id uuid.UUID) error {
 		return m.ID == id
 	})
 	if l == len(s.monitors) {
-		return storage.ErrMonitorNotFound
+		return monitor.ErrMonitorNotFound
 	}
 	return nil
 }
