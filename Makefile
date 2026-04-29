@@ -3,7 +3,7 @@ ifneq (,$(wildcard ./.env))
     export
 endif
 
-BINARY_NAME=uptime-monitor
+BINARY_NAME=watchlight
 
 .PHONY: build run prepare fmt tidy
 
