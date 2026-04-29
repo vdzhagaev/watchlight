@@ -33,7 +33,7 @@ These are settled; changing them requires a rethink.
 
 ## Phases
 
-### v0.1 — Monitor CRUD complete [in progress]
+### v0.1 — Monitor CRUD complete [done]
 
 Close the CRUD loop and put the Service layer under tests so subsequent
 phases can refactor safely.
@@ -52,18 +52,57 @@ for known error cases), tests are green, CI is green on `main`.
 ### v0.2 — SQLite parity + storage switch
 
 Make the SQLite backend a drop-in replacement for memory, selectable at
-startup via config.
+startup via config. Reuse the existing Service test suite to verify
+behavioral parity between the two backends.
 
-- `GetMonitorList`, `DeleteMonitor` in `storage/sqlite`
-- Config field `storage.type` (`memory` | `sqlite`) with path
+**Scope:**
+
+- `GetMonitorList` and `DeleteMonitor` on `sqlite.Storage`
 - Compile-time assertion `var _ monitor.Repository = (*sqlite.Storage)(nil)`
-- Run the v0.1 Service test suite against the SQLite backend
-- Document the "delete `storage.db` if schema changed" caveat in README
+- Config field `storage.type` (`memory` | `sqlite`) plus `storage.path`;
+  selection happens in `cmd/server`
+- Refactor the v0.1 Service test suite to be repository-agnostic via a
+  factory, then run it against both backends
+- README note on the "delete `storage.db` if schema changed" caveat,
+  marked as temporary until v0.3
+
+**Deliberately out of scope:**
+
+- Migration mechanism (own milestone in v0.3)
+- Connection pooling / WAL mode tuning
+- Storage backends beyond memory and SQLite
 
 **Exit criteria:** either backend can be selected via config without code
-changes; the full test suite passes against both.
+changes; the full Service test suite passes against both.
 
-### v0.3 — Manual check trigger + runners
+### v0.3 — Migrations
+
+Build a hand-rolled migration mechanism (no third-party tool) so the
+SQLite schema can evolve without "delete storage.db" workarounds. The
+goal is to understand the moving parts of a migration system before
+reaching for a library in a future project.
+
+**Scope:**
+
+- `migrations/` directory with numbered SQL files (e.g. `0001_initial.sql`)
+- Schema-tracking table (e.g. `_migrations` with `id`, `name`, `applied_at`)
+  created automatically on first run
+- Migrator on startup: read applied set, run pending migrations in
+  numeric order, each inside its own transaction, stop on first failure
+- Convert the current SQLite schema into `0001_initial.sql`
+- README section explaining how to add a new migration
+
+**Deliberately out of scope:**
+
+- Down-migrations / rollback
+- Concurrent-safe locking (single-node assumption holds through v0.6)
+- Checksums / drift detection
+
+**Exit criteria:** schema changes ship as new migration files instead of
+README notes; running the server against an existing `storage.db` applies
+any pending migrations cleanly on startup.
+
+### v0.4 — Manual check trigger + runners
 
 Make the service actually *check* a monitor. Persist results.
 
@@ -79,7 +118,7 @@ Make the service actually *check* a monitor. Persist results.
 **Exit criteria:** manual trigger returns a persisted result and updates
 the monitor's status; latest result is queryable.
 
-### v0.4 — Background scheduler
+### v0.5 — Background scheduler
 
 Run enabled check configs on their declared intervals without human input.
 
@@ -96,7 +135,7 @@ Run enabled check configs on their declared intervals without human input.
 steady stream of result rows; stopping the server drains in-flight work
 within `shutdown_timeout`.
 
-### v0.5 — Incidents + notifications
+### v0.6 — Incidents + notifications
 
 Turn streaks of failures into tracked incidents and notify on change.
 
@@ -113,7 +152,7 @@ Turn streaks of failures into tracked incidents and notify on change.
 **Exit criteria:** a failing monitor opens an incident and posts to Slack;
 recovery closes the incident and posts a second message.
 
-## Beyond v0.5
+## Beyond v0.6
 
 Possible directions, not committed to:
 
@@ -124,4 +163,4 @@ Possible directions, not committed to:
 - Historical metrics / dashboards
 - Multi-region probing
 
-These are explicitly out of scope until v0.5 lands.
+These are explicitly out of scope until v0.6 lands.
