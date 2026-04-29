@@ -2,7 +2,7 @@
 
 A lightweight uptime monitoring service in Go.
 
-**Status:** work in progress — `v0.1` (monitor CRUD) underway. Not production-ready.
+**Status:** `v0.1` (monitor CRUD) shipped, `v0.2` (SQLite parity) in progress. Not production-ready.
 
 ## Overview
 
@@ -13,7 +13,7 @@ land in later phases — see [ROADMAP](ROADMAP.md).
 
 ## Current scope
 
-- HTTP API for managing monitors (`POST`, `GET`, `GET /{id}`)
+- HTTP API for managing monitors (`POST`, `GET`, `GET /{id}`, `PATCH /{id}`, `DELETE /{id}`)
 - In-memory storage backend with seeded sample data
 - SQLite storage backend (implemented, not yet wired into `cmd/server`)
 - Graceful shutdown via `signal.NotifyContext`
