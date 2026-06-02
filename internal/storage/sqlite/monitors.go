@@ -25,7 +25,7 @@ func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx,
-		"INSERT INTO monitors (id, name, url, status) VALUES (?, ?)",
+		"INSERT INTO monitors (id, name, url, status) VALUES (?, ?, ?, ?)",
 		m.ID, m.Name, m.URL, m.Status,
 	)
 	if err != nil {
@@ -169,6 +169,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 			cType              sql.NullString
 			cEnabled           sql.NullBool
 			cInterval          sql.NullInt64
+			cTimeout           sql.NullInt64
 			cMaxAttempts       sql.NullInt64
 			cDoErrorScreenshot sql.NullBool
 			cKeywordsRaw       sql.NullString
@@ -176,7 +177,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 
 		if err := rows.Scan(
 			&mID, &mName, &mURL, &mStatus,
-			&cID, &cType, &cEnabled, &cInterval,
+			&cID, &cType, &cEnabled, &cInterval, &cTimeout,
 			&cMaxAttempts, &cDoErrorScreenshot, &cKeywordsRaw,
 		); err != nil {
 			return monitor.Monitor{}, fmt.Errorf("%s: scan config: %w", op, err)
