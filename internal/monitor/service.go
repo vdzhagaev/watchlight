@@ -21,7 +21,13 @@ func (svc *Service) Create(ctx context.Context, in CreateMonitorInput) (Monitor,
 	if err != nil {
 		return Monitor{}, err
 	}
-	return svc.repo.CreateMonitor(ctx, m)
+	err = svc.repo.CreateMonitor(ctx, m)
+
+	if err != nil {
+		return Monitor{}, err
+	}
+
+	return m, nil
 }
 
 func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorInput) (Monitor, error) {
