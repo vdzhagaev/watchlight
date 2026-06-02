@@ -25,7 +25,7 @@ func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx,
-		"INSERT INTO monitors (id, name, url, status) VALUES (?, ?)",
+		"INSERT INTO monitors (id, name, url, status) VALUES (?, ?, ?, ?)",
 		m.ID, m.Name, m.URL, m.Status,
 	)
 	if err != nil {
@@ -141,14 +141,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 		ORDER BY m.id
 	`
 
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
-	}
-
-	defer tx.Rollback()
-
-	rows, err := tx.QueryContext(ctx, query, id)
+	rows, err := s.db.QueryContext(ctx, query, id)
 
 	if err != nil {
 		return monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
@@ -169,6 +162,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 			cType              sql.NullString
 			cEnabled           sql.NullBool
 			cInterval          sql.NullInt64
+			cTimeout           sql.NullInt64
 			cMaxAttempts       sql.NullInt64
 			cDoErrorScreenshot sql.NullBool
 			cKeywordsRaw       sql.NullString
@@ -176,7 +170,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 
 		if err := rows.Scan(
 			&mID, &mName, &mURL, &mStatus,
-			&cID, &cType, &cEnabled, &cInterval,
+			&cID, &cType, &cEnabled, &cInterval, &cTimeout,
 			&cMaxAttempts, &cDoErrorScreenshot, &cKeywordsRaw,
 		); err != nil {
 			return monitor.Monitor{}, fmt.Errorf("%s: scan config: %w", op, err)
@@ -200,6 +194,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 				CheckType:         monitor.CheckType(cType.String),
 				IsEnabled:         cEnabled.Bool,
 				CheckInterval:     int(cInterval.Int64),
+				CheckTimeout:      int(cTimeout.Int64),
 				MaxAttempts:       int(cMaxAttempts.Int64),
 				DoErrorScreenshot: cDoErrorScreenshot.Bool,
 			}
@@ -221,9 +216,123 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 		return monitor.Monitor{}, monitor.ErrMonitorNotFound
 	}
 
-	if err := tx.Commit(); err != nil {
-		return monitor.Monitor{}, fmt.Errorf("%s: commit: %w", op, err)
+	return m, nil
+}
+
+func (s *Storage) DeleteMonitor(ctx context.Context, id uuid.UUID) error {
+	const op = "storage.sqlite.DeleteMonitor"
+	query := "DELETE FROM monitors WHERE id = ?"
+	res, err := s.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("%s: deleting row error: %w", op, err)
 	}
 
-	return m, nil
+	count, err := res.RowsAffected()
+
+	if err != nil {
+		return fmt.Errorf("%s: deleting row error: %w", op, err)
+	}
+
+	if count != 1 {
+		return monitor.ErrMonitorNotFound
+	}
+
+	return nil
+}
+
+func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error) {
+	const op = "storage.sqlite.GetMonitorList"
+
+	query := `
+		SELECT
+			m.id, m.name, m.url, m.status,
+			c.id, c.check_type, c.is_enabled, c.check_interval,
+			c.check_timeout, c.max_attempts, c.do_error_screenshot,
+			c.keywords
+		FROM monitors AS m
+		LEFT JOIN monitor_check_configs AS c ON m.id = c.monitor_id
+		ORDER BY m.id
+	`
+
+	rows, err := s.db.QueryContext(ctx, query)
+
+	if err != nil {
+		return []monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
+	}
+	defer rows.Close()
+
+	monitors := make(map[uuid.UUID]monitor.Monitor)
+	order := []uuid.UUID{}
+
+	for rows.Next() {
+		var (
+			mID     uuid.NullUUID
+			mName   string
+			mURL    string
+			mStatus monitor.MonitorStatus
+
+			cID                uuid.NullUUID
+			cType              sql.NullString
+			cEnabled           sql.NullBool
+			cInterval          sql.NullInt64
+			cTimeout           sql.NullInt64
+			cMaxAttempts       sql.NullInt64
+			cDoErrorScreenshot sql.NullBool
+			cKeywordsRaw       sql.NullString
+		)
+
+		if err := rows.Scan(
+			&mID, &mName, &mURL, &mStatus,
+			&cID, &cType, &cEnabled, &cInterval, &cTimeout,
+			&cMaxAttempts, &cDoErrorScreenshot, &cKeywordsRaw,
+		); err != nil {
+			return []monitor.Monitor{}, fmt.Errorf("%s: scan config: %w", op, err)
+		}
+
+		m, ok := monitors[mID.UUID]
+		if !ok {
+			m = monitor.Monitor{
+				ID:           mID.UUID,
+				Name:         mName,
+				URL:          mURL,
+				Status:       mStatus,
+				CheckConfigs: []monitor.MonitorCheckConfig{},
+			}
+			order = append(order, m.ID)
+		}
+
+		var cfg monitor.MonitorCheckConfig
+
+		if cID.Valid {
+			cfg = monitor.MonitorCheckConfig{
+				ID:                cID.UUID,
+				MonitorID:         mID.UUID,
+				CheckType:         monitor.CheckType(cType.String),
+				IsEnabled:         cEnabled.Bool,
+				CheckInterval:     int(cInterval.Int64),
+				CheckTimeout:      int(cTimeout.Int64),
+				MaxAttempts:       int(cMaxAttempts.Int64),
+				DoErrorScreenshot: cDoErrorScreenshot.Bool,
+			}
+			if cKeywordsRaw.Valid && cKeywordsRaw.String != "" {
+				err := json.Unmarshal([]byte(cKeywordsRaw.String), &cfg.Keywords)
+				if err != nil {
+					return []monitor.Monitor{}, fmt.Errorf("%s: error unmarshal keywords from base: %w", op, err)
+				}
+			}
+			m.CheckConfigs = append(m.CheckConfigs, cfg)
+		}
+		monitors[m.ID] = m
+	}
+
+	if err := rows.Err(); err != nil {
+		return []monitor.Monitor{}, fmt.Errorf("%s: rows iteration error: %w", op, err)
+	}
+
+	output := make([]monitor.Monitor, 0, len(monitors))
+	for _, id := range order {
+		output = append(output, monitors[id])
+	}
+
+	return output, nil
 }

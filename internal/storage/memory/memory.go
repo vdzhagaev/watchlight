@@ -41,11 +41,11 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 	return monitor.Monitor{}, monitor.ErrMonitorNotFound
 }
 
-func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) (monitor.Monitor, error) {
+func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.monitors = append(s.monitors, m)
-	return m, nil
+	return nil
 }
 
 func (s *Storage) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) (monitor.Monitor, error) {
