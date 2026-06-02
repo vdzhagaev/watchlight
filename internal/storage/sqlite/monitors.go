@@ -250,3 +250,94 @@ func (s *Storage) DeleteMonitor(ctx context.Context, id uuid.UUID) error {
 
 	return nil
 }
+
+func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error) {
+	const op = "storage.sqlite.GetMonitorList"
+
+	query := `
+		SELECT
+			m.id, m.name, m.url, m.status,
+			c.id, c.check_type, c.is_enabled, c.check_interval,
+			c.check_timeout, c.max_attempts, c.do_error_screenshot,
+			c.keywords
+		FROM monitors AS m
+		LEFT JOIN monitor_check_configs AS c ON m.id = c.monitor_id
+		ORDER BY m.id
+	`
+
+	rows, err := s.db.QueryContext(ctx, query)
+
+	if err != nil {
+		return []monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
+	}
+	defer rows.Close()
+
+	var monitors = make(map[uuid.UUID]monitor.Monitor)
+
+	for rows.Next() {
+		var (
+			mID     uuid.NullUUID
+			mName   string
+			mURL    string
+			mStatus monitor.MonitorStatus
+
+			cID                uuid.NullUUID
+			cType              sql.NullString
+			cEnabled           sql.NullBool
+			cInterval          sql.NullInt64
+			cTimeout           sql.NullInt64
+			cMaxAttempts       sql.NullInt64
+			cDoErrorScreenshot sql.NullBool
+			cKeywordsRaw       sql.NullString
+		)
+
+		if err := rows.Scan(
+			&mID, &mName, &mURL, &mStatus,
+			&cID, &cType, &cEnabled, &cInterval, &cTimeout,
+			&cMaxAttempts, &cDoErrorScreenshot, &cKeywordsRaw,
+		); err != nil {
+			return []monitor.Monitor{}, fmt.Errorf("%s: scan config: %w", op, err)
+		}
+
+		m, ok := monitors[mID.UUID]
+		if !ok {
+			m = monitor.Monitor{
+				ID:           mID.UUID,
+				Name:         mName,
+				URL:          mURL,
+				Status:       mStatus,
+				CheckConfigs: []monitor.MonitorCheckConfig{},
+			}
+		}
+
+		var cfg monitor.MonitorCheckConfig
+
+		if cID.Valid {
+			cfg = monitor.MonitorCheckConfig{
+				ID:                cID.UUID,
+				MonitorID:         mID.UUID,
+				CheckType:         monitor.CheckType(cType.String),
+				IsEnabled:         cEnabled.Bool,
+				CheckInterval:     int(cInterval.Int64),
+				CheckTimeout:      int(cTimeout.Int64),
+				MaxAttempts:       int(cMaxAttempts.Int64),
+				DoErrorScreenshot: cDoErrorScreenshot.Bool,
+			}
+			if cKeywordsRaw.Valid && cKeywordsRaw.String != "" {
+				err := json.Unmarshal([]byte(cKeywordsRaw.String), &cfg.Keywords)
+				if err != nil {
+					return []monitor.Monitor{}, fmt.Errorf("%s: error unmarshal keywords from base: %w", op, err)
+				}
+			}
+			m.CheckConfigs = append(m.CheckConfigs, cfg)
+		}
+		monitors[m.ID] = m
+	}
+
+	output := make([]monitor.Monitor, len(monitors))
+	for _, m := range monitors {
+		output = append(output, m)
+	}
+
+	return output, nil
+}
