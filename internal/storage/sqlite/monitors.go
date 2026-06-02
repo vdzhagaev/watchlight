@@ -230,16 +230,23 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 	return m, nil
 }
 
-func (s *Storage) DeleteMonitor(ctx context.Context, id int64) error {
+func (s *Storage) DeleteMonitor(ctx context.Context, id uuid.UUID) error {
 	const op = "storage.sqlite.DeleteMonitor"
 	query := "DELETE FROM monitors WHERE id = ?"
-	res, err := s.db.ExecContext(ctx, query)
+	res, err := s.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("%s: deleting row error: %w", op, err)
 	}
 
-	if count, err := res.RowsAffected(); count != 1 || err != nil {
+	count, err := res.RowsAffected()
+
+	if err != nil {
 		return fmt.Errorf("%s: deleting row error: %w", op, err)
 	}
+
+	if count != 1 {
+		return monitor.ErrMonitorNotFound
+	}
+
 	return nil
 }
