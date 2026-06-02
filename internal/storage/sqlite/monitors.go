@@ -201,6 +201,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 				CheckType:         monitor.CheckType(cType.String),
 				IsEnabled:         cEnabled.Bool,
 				CheckInterval:     int(cInterval.Int64),
+				CheckTimeout:      int(cTimeout.Int64),
 				MaxAttempts:       int(cMaxAttempts.Int64),
 				DoErrorScreenshot: cDoErrorScreenshot.Bool,
 			}
