@@ -272,7 +272,8 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 	}
 	defer rows.Close()
 
-	var monitors = make(map[uuid.UUID]monitor.Monitor)
+	monitors := make(map[uuid.UUID]monitor.Monitor)
+	order := []uuid.UUID{}
 
 	for rows.Next() {
 		var (
@@ -308,6 +309,7 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 				Status:       mStatus,
 				CheckConfigs: []monitor.MonitorCheckConfig{},
 			}
+			order = append(order, m.ID)
 		}
 
 		var cfg monitor.MonitorCheckConfig
@@ -334,9 +336,9 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 		monitors[m.ID] = m
 	}
 
-	output := make([]monitor.Monitor, len(monitors))
-	for _, m := range monitors {
-		output = append(output, m)
+	output := make([]monitor.Monitor, 0, len(monitors))
+	for _, id := range order {
+		output = append(output, monitors[id])
 	}
 
 	return output, nil
