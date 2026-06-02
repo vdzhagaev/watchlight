@@ -336,6 +336,10 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 		monitors[m.ID] = m
 	}
 
+	if err := rows.Err(); err != nil {
+		return []monitor.Monitor{}, fmt.Errorf("%s: rows iteration error: %w", op, err)
+	}
+
 	output := make([]monitor.Monitor, 0, len(monitors))
 	for _, id := range order {
 		output = append(output, monitors[id])
