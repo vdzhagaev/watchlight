@@ -141,14 +141,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 		ORDER BY m.id
 	`
 
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
-	}
-
-	defer tx.Rollback()
-
-	rows, err := tx.QueryContext(ctx, query, id)
+	rows, err := s.db.QueryContext(ctx, query, id)
 
 	if err != nil {
 		return monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
@@ -221,10 +214,6 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 
 	if !found {
 		return monitor.Monitor{}, monitor.ErrMonitorNotFound
-	}
-
-	if err := tx.Commit(); err != nil {
-		return monitor.Monitor{}, fmt.Errorf("%s: commit: %w", op, err)
 	}
 
 	return m, nil
