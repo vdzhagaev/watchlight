@@ -9,13 +9,14 @@ import (
 	"github.com/vdzhagaev/watchlight/internal/lib/netutil"
 )
 
-func CheckTCP(ctx context.Context, req CheckRequest) (time.Duration, error) {
+type TCPChecker struct{}
+
+func (c TCPChecker) Check(ctx context.Context, req CheckRequest) (CheckResult, error) {
 	const op = "services.checker.tcp.check"
 
 	hostPort, err := netutil.PrepareAddress(req.URL)
-
 	if err != nil {
-		return 0, err
+		return CheckResult{}, err
 	}
 
 	if req.Timeout <= 0 {
@@ -27,12 +28,20 @@ func CheckTCP(ctx context.Context, req CheckRequest) (time.Duration, error) {
 	start := time.Now()
 
 	conn, err := dialer.DialContext(ctx, "tcp", hostPort)
-
 	if err != nil {
-		return 0, fmt.Errorf("%s: connect to %s: %w", op, hostPort, err)
+		return CheckResult{
+			ResponseTime: time.Since(start),
+			Reachable:    false,
+			Err:          fmt.Errorf("%s: connect to %s: %w", op, hostPort, err),
+		}, nil
 	}
 	duration := time.Since(start)
 	defer conn.Close()
 
-	return duration, nil
+	return CheckResult{
+		ResponseTime: duration,
+		Reachable:    true,
+	}, nil
 }
+
+var _ Checker = TCPChecker{}
