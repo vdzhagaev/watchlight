@@ -47,50 +47,95 @@ phases can refactor safely.
 - CI: GitHub Actions running `go build`, `go vet`, `go test` on push and PR
 
 **Exit criteria:** all five endpoints respond correctly (including 404/409
-for known error cases), tests are green, CI is green on `main`.
+for known error cases), tests ain`.
 
-### v0.2 — SQLite parity + storage switch
+### v0.2 — SQLite storage metho
 
-Make the SQLite backend a drop-in replacement for memory, selectable at
-startup via config. Reuse the existing Service test suite to verify
-behavioral parity between the two backends.
+Bring the SQLite backend up to emory, so it can
+later be swapped in. Per-method error semantics match the memory backend
+(e.g. `ErrMonitorNotFound` on a
+
+- `GetMonitorList` on `sqlite.Srows.Err()` checked
+- `DeleteMonitor` on `sqlite.Storage` — bound `id`, `404` on zero rows affected
+
+**Exit criteria:** SQLite implements the full read/delete surface; behavior
+matches memory on the shared er
+
+### v0.3 — Checker (manual trig
+
+Make the service actually *checs.
+
+- `internal/checker` package wild the existing
+  `CheckTCP` under it
+- HTTP checker: GET with configd keyword checks
+- Headless checker stub (decide inside the issue whether to fully implement
+  with chromedp/rod or defer to
+- `ResultRepository` interface with memory + SQLite implementations
+- `POST /monitors/{id}/check[?t the selected
+  check, saves the result, and updates `Monitor.Status`
+- Structured error surface — nok failures
+
+**Exit criteria:** manual triggt and updates
+the monitor's status; latest result is queryable.
+
+### v0.4 — Background scheduler
+
+Run enabled check configs on their declared intervals without human input.
+
+- `NextCheckAt` field on `MonitorCheckConfig` (schema, struct, persistence)
+- `Repository.ListDueConfigs(ctan, oldest-first
+- `internal/scheduler` package: long-running loop owned by `cmd/server`,
+  ticking every N seconds, disper pool
+- Config fields: `scheduler.tick_interval`, `scheduler.max_in_flight`
+- Graceful shutdown: in-flight
+- Structured logs per tick and per check
+- Assumption: single-node deploDocument it.
+
+**Exit criteria:** creating a m produces a
+steady stream of result rows; stopping the server drains in-flight work
+within `shutdown_timeout`.
+
+### v0.5 — SQLite parity + stor
+
+Make the SQLite backend a drop-electable at
+startup via config. Reuse the Service test suite to verify behavioral
+parity between the two backends
 
 **Scope:**
 
-- `GetMonitorList` and `DeleteMonitor` on `sqlite.Storage`
-- Compile-time assertion `var _ monitor.Repository = (*sqlite.Storage)(nil)`
+- Compile-time assertion `var _te.Storage)(nil)`
 - Config field `storage.type` (`memory` | `sqlite`) plus `storage.path`;
-  selection happens in `cmd/server`
+  selection happens in `cmd/ser
 - Refactor the v0.1 Service test suite to be repository-agnostic via a
-  factory, then run it against both backends
+  factory, then run it against
 - README note on the "delete `storage.db` if schema changed" caveat,
-  marked as temporary until v0.3
+  marked as temporary until v0.
 
 **Deliberately out of scope:**
 
-- Migration mechanism (own milestone in v0.3)
+- Migration mechanism (own mile
 - Connection pooling / WAL mode tuning
-- Storage backends beyond memory and SQLite
+- Storage backends beyond memor
 
-**Exit criteria:** either backend can be selected via config without code
+**Exit criteria:** either backeg without code
 changes; the full Service test suite passes against both.
 
-### v0.3 — Migrations
+### v0.6 — Migrations
 
 Build a hand-rolled migration mechanism (no third-party tool) so the
-SQLite schema can evolve without "delete storage.db" workarounds. The
+SQLite schema can evolve withouounds. The
 goal is to understand the moving parts of a migration system before
-reaching for a library in a future project.
+reaching for a library in a fut
 
 **Scope:**
 
-- `migrations/` directory with numbered SQL files (e.g. `0001_initial.sql`)
+- `migrations/` directory with 01_initial.sql`)
 - Schema-tracking table (e.g. `_migrations` with `id`, `name`, `applied_at`)
-  created automatically on first run
+  created automatically on firs
 - Migrator on startup: read applied set, run pending migrations in
-  numeric order, each inside its own transaction, stop on first failure
+  numeric order, each inside itirst failure
 - Convert the current SQLite schema into `0001_initial.sql`
-- README section explaining how to add a new migration
+- README section explaining how
 
 **Deliberately out of scope:**
 
@@ -98,69 +143,34 @@ reaching for a library in a future project.
 - Concurrent-safe locking (single-node assumption holds through v0.6)
 - Checksums / drift detection
 
-**Exit criteria:** schema changes ship as new migration files instead of
+**Exit criteria:** schema changes instead of
 README notes; running the server against an existing `storage.db` applies
-any pending migrations cleanly on startup.
+any pending migrations cleanly
 
-### v0.4 — Manual check trigger + runners
+## Beyond v0.6
 
-Make the service actually *check* a monitor. Persist results.
+### Incidents + notifications
 
-- `ResultRepository` interface with memory + SQLite implementations
-- `internal/checker` package with a `Checker` interface
-- HTTP checker: GET with configured timeout, status-code and keyword checks
-- Headless checker stub (decide inside the issue whether to fully implement
-  with chromedp/rod or defer to a later phase)
-- `POST /monitors/{id}/check[?type=http]` handler that runs the selected
-  check, saves the result, and updates `Monitor.Status`
-- Structured error surface — no bare 500s for expected check failures
-
-**Exit criteria:** manual trigger returns a persisted result and updates
-the monitor's status; latest result is queryable.
-
-### v0.5 — Background scheduler
-
-Run enabled check configs on their declared intervals without human input.
-
-- `NextCheckAt` field on `MonitorCheckConfig` (schema, struct, persistence)
-- `Repository.ListDueConfigs(ctx, now, limit)` — indexed scan, oldest-first
-- `internal/scheduler` package: long-running loop owned by `cmd/server`,
-  ticking every N seconds, dispatching due checks to a worker pool
-- Config fields: `scheduler.tick_interval`, `scheduler.max_in_flight`
-- Graceful shutdown: in-flight checks drain before exit
-- Structured logs per tick and per check
-- Assumption: single-node deployment (no leader election). Document it.
-
-**Exit criteria:** creating a monitor with a short interval produces a
-steady stream of result rows; stopping the server drains in-flight work
-within `shutdown_timeout`.
-
-### v0.6 — Incidents + notifications
-
-Turn streaks of failures into tracked incidents and notify on change.
+Turn streaks of failures into ton change.
+Not yet a milestone — promoted when v0.6 lands.
 
 - `Incident` entity: `id`, `monitor_id`, `started_at`, `ended_at`, `reason`,
   `last_result_id`
 - `IncidentRepository` with memory + SQLite implementations
-- Rule engine: N consecutive failures open an incident; first success
+- Rule engine: N consecutive fast success
   closes it. Thresholds in config.
-- `internal/notifier` with a `Notifier` interface; Slack implementation via
+- `internal/notifier` with a `Nplementation via
   incoming webhook
-- Wire notifier into the scheduler/checker pipeline
+- Wire notifier into the schedu
 - `GET /monitors/{id}/incidents` endpoint
 
-**Exit criteria:** a failing monitor opens an incident and posts to Slack;
-recovery closes the incident and posts a second message.
+### Other possible directions
 
-## Beyond v0.6
-
-Possible directions, not committed to:
+Not committed to:
 
 - Additional notifier channels (email, PagerDuty, Telegram)
-- Multi-node support with leader election
+- Multi-node support with leade
 - Web UI
-- Public authentication (API keys, OIDC)
+- Public authentication (API ke
 - Historical metrics / dashboards
 - Multi-region probing
-
-These are explicitly out of scope until v0.6 lands.
