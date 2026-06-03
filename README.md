@@ -2,7 +2,7 @@
 
 A lightweight uptime monitoring service in Go.
 
-**Status:** `v0.1` (monitor CRUD) shipped, `v0.2` (SQLite parity) in progress. Not production-ready.
+**Status:** `v0.1` (monitor CRUD) shipped, `v0.2` (SQLite parity) shipped. `v0.3` (checker) in progress. Not production-ready.
 
 ## Overview
 
