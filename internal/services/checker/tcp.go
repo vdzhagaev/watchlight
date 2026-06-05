@@ -2,6 +2,7 @@ package checker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -29,10 +30,18 @@ func (c TCPChecker) Check(ctx context.Context, req CheckRequest) (CheckResult, e
 
 	conn, err := dialer.DialContext(ctx, "tcp", hostPort)
 	if err != nil {
+		var netErr net.Error
+		if ok := errors.As(err, &netErr); ok && netErr.Timeout() {
+			return CheckResult{
+				ResponseTime: time.Since(start),
+				Reachable:    false,
+				Err:          fmt.Errorf("%s: %w: %w", op, ErrTimeout, err),
+			}, nil
+		}
 		return CheckResult{
 			ResponseTime: time.Since(start),
 			Reachable:    false,
-			Err:          fmt.Errorf("%s: connect to %s: %w", op, hostPort, err),
+			Err:          fmt.Errorf("%s: %w: %w", op, ErrUnreachable, err),
 		}, nil
 	}
 	duration := time.Since(start)
