@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"time"
 
@@ -28,22 +28,22 @@ type Monitoring struct {
 	CheckTimeout    time.Duration `yaml:"check_timeout" env-default:"10s"`
 }
 
-func MustLoad() *Config {
+func Load() (*Config, error) {
 	configPath := os.Getenv("CONFIG_PATH")
 
 	if configPath == "" {
-		log.Fatal("CONFIG_PATH not set in environment")
+		return nil, fmt.Errorf("CONFIG_PATH not set in environment")
 	}
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		log.Fatalf("config file does not exist: %s", configPath)
+		return nil, fmt.Errorf("config file does not exist: %s", configPath)
 	}
 
 	var cfg Config
 
 	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
-		log.Fatalf("cannot read config: %s", err)
+		return nil, fmt.Errorf("cannot read config: %w", err)
 	}
 
-	return &cfg
+	return &cfg, nil
 }

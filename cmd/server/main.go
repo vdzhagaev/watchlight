@@ -29,8 +29,18 @@ const (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	// TODO: Config
-	cfg := config.MustLoad()
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
 	// TODO: Logger
 	log := setupLogger(cfg.Env)
 	log.Info("Uptime Monitoring Service starting...")
@@ -41,9 +51,9 @@ func main() {
 	// TODO: DB & Storage
 	storage, err := sqlite.New(cfg.StoragePath)
 	if err != nil {
-		log.Error("failed to init storage", sl.Err(err))
-		os.Exit(1)
+		return fmt.Errorf("failed to init storage: %w", err)
 	}
+	defer storage.Close()
 
 	// TODO: Workers: Scheduler & Checker
 	router := chi.NewRouter()
@@ -97,14 +107,11 @@ func main() {
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Error("server shutdown failed", sl.Err(err))
-	}
-
-	if err := storage.Close(); err != nil {
-		log.Error("failed to close storage", sl.Err(err))
+		return fmt.Errorf("server shutdown failed: %w", err)
 	}
 
 	log.Info("Server stopped")
+	return nil
 }
 
 func setupLogger(env string) *slog.Logger {
