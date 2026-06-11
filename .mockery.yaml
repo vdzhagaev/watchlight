@@ -1,0 +1,9 @@
+template: testify
+dir: "{{.InterfaceDir}}/mocks"
+filename: "{{.InterfaceName}}.go"
+pkgname: "mocks"
+structname: "Mock{{.InterfaceName}}"
+packages:
+  github.com/vdzhagaev/watchlight/internal/monitor:
+    interfaces:
+      Repository: {}

@@ -6,6 +6,8 @@ import (
 	"github.com/google/uuid"
 )
 
+//go:generate mockery
+
 type Repository interface {
 	GetMonitor(ctx context.Context, id uuid.UUID) (Monitor, error)
 	GetMonitorList(ctx context.Context) ([]Monitor, error)
