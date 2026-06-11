@@ -10,20 +10,10 @@ import (
 
 type Config struct {
 	Env          string     `yaml:"env" env:"APP_ENV" env-default:"local"`
-	Database     Database   `yaml:"database"`
 	StoragePath  string     `yaml:"storage_path" env-required:"true" env:"STORAGE_PATH"`
 	HTTPServer   HTTPServer `yaml:"http_server"`
 	Monitoring   Monitoring `yaml:"monitoring"`
 	SlackWebhook string     `yaml:"slack_webhook" env:"SLACK_WEBHOOK_URL"`
-}
-
-type Database struct {
-	Host     string `yaml:"host" env:"DB_HOST" env-default:"localhost"`
-	Port     string `yaml:"port" env:"DB_PORT" env-default:"5432"`
-	User     string `yaml:"user" env:"DB_USER" env-default:"postgres"`
-	Password string `yaml:"password" env:"DB_PASSWORD"`
-	Name     string `yaml:"name" env:"DB_NAME" env-default:"uptime_db"`
-	SSLMode  string `yaml:"sslmode" env:"DB_SSLMODE" env-default:"disable"`
 }
 
 type HTTPServer struct {
@@ -56,13 +46,4 @@ func MustLoad() *Config {
 	}
 
 	return &cfg
-}
-
-func (cfg *Config) DBConnString() string {
-	return "host=" + cfg.Database.Host +
-		" port=" + cfg.Database.Port +
-		" user=" + cfg.Database.User +
-		" password=" + cfg.Database.Password +
-		" dbname=" + cfg.Database.Name +
-		" sslmode=" + cfg.Database.SSLMode
 }

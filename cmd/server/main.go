@@ -15,7 +15,7 @@ import (
 	"github.com/vdzhagaev/watchlight/internal/lib/logger/handlers/slogpretty"
 	"github.com/vdzhagaev/watchlight/internal/lib/logger/sl"
 	"github.com/vdzhagaev/watchlight/internal/monitor"
-	"github.com/vdzhagaev/watchlight/internal/storage/memory"
+	"github.com/vdzhagaev/watchlight/internal/storage/sqlite"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -39,8 +39,11 @@ func main() {
 	defer stop()
 
 	// TODO: DB & Storage
-	storage := memory.New()
-	storage.Fill(memory.SampleMonitors)
+	storage, err := sqlite.New(cfg.StoragePath)
+	if err != nil {
+		log.Error("failed to init storage", sl.Err(err))
+		os.Exit(1)
+	}
 
 	// TODO: Workers: Scheduler & Checker
 	router := chi.NewRouter()
