@@ -59,6 +59,17 @@ type Monitor struct {
 	CheckConfigs []MonitorCheckConfig `json:"checks"`
 }
 
+type RunnableCheck struct {
+	MonitorID   uuid.UUID
+	ConfigID    uuid.UUID
+	URL         string
+	CheckType   CheckType
+	Interval    time.Duration
+	Timeout     time.Duration
+	Keywords    []string
+	MaxAttempts int
+}
+
 type MonitorCheckResult struct {
 	ID             uuid.UUID     `json:"id"`
 	MonitorID      uuid.UUID     `json:"monitor_id"`
@@ -69,6 +80,7 @@ type MonitorCheckResult struct {
 	CheckedAt      time.Time     `json:"checked_at"`
 	Error          string        `json:"error,omitempty"`
 	ScreenshotPath string        `json:"screenshot_path,omitempty"`
+	FoundKeywords  []string      `json:"found_keywords,omitempty"`
 }
 
 func (m *Monitor) GetConfig(t CheckType) (MonitorCheckConfig, bool) {
