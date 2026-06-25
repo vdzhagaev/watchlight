@@ -22,7 +22,6 @@ func (svc *Service) Create(ctx context.Context, in CreateMonitorInput) (Monitor,
 		return Monitor{}, err
 	}
 	err = svc.repo.CreateMonitor(ctx, m)
-
 	if err != nil {
 		return Monitor{}, err
 	}
@@ -44,4 +43,8 @@ func (svc *Service) List(ctx context.Context) ([]Monitor, error) {
 
 func (svc *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	return svc.repo.DeleteMonitor(ctx, id)
+}
+
+func (svc *Service) HandleCheckResult(ctx context.Context, r MonitorCheckResult) error {
+	return svc.repo.SaveCheckResult(ctx, r)
 }
