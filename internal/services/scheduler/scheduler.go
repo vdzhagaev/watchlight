@@ -32,7 +32,7 @@ type Event struct {
 type Scheduler struct {
 	wg             sync.WaitGroup
 	jobs           chan monitor.RunnableCheck
-	results        chan monitor.MonitorCheckResult
+	results        chan monitor.CheckResultInput
 	events         chan Event
 	done           chan struct{}
 	dispatchCancel context.CancelFunc
@@ -61,7 +61,7 @@ type ConfigsGetter interface {
 }
 
 type ResultHandler interface {
-	HandleCheckResult(context.Context, monitor.MonitorCheckResult) error
+	HandleCheckResult(context.Context, monitor.CheckResultInput) error
 }
 
 func New(p Params) *Scheduler {
@@ -73,7 +73,7 @@ func New(p Params) *Scheduler {
 	}
 	return &Scheduler{
 		jobs:         make(chan monitor.RunnableCheck),
-		results:      make(chan monitor.MonitorCheckResult, p.Workers),
+		results:      make(chan monitor.CheckResultInput, p.Workers),
 		events:       make(chan Event),
 		done:         make(chan struct{}),
 		getter:       p.Getter,
@@ -215,24 +215,20 @@ func (s *Scheduler) sleepUntilNext() time.Duration {
 	return d
 }
 
-// TODO: workers run on the scheduler's ctx, so on shutdown in-flight checks are
-// cancelled and recorded as spurious "failure" results. Consider a separate ctx
-// for checks that is cancelled only after dispatch has drained.
 func (s *Scheduler) worker(ctx context.Context) {
 	defer s.wg.Done()
 	for rc := range s.jobs {
 		c, ok := s.checkers[rc.CheckType]
 
-		result := monitor.MonitorCheckResult{
+		result := monitor.CheckResultInput{
 			MonitorID: rc.MonitorID,
 			ConfigID:  rc.ConfigID,
 		}
 
 		if !ok {
-			result.Status = monitor.CheckFailure
 			result.CheckedAt = time.Now()
 			// TODO: Do SchedulerErrors and chage error type from string to `error`
-			result.Error = fmt.Sprintf("Not available checker for this config: %s", rc.CheckType)
+			result.Error = fmt.Errorf("Not available checker for this config: %s", rc.CheckType)
 
 			s.results <- result
 			continue
@@ -242,27 +238,17 @@ func (s *Scheduler) worker(ctx context.Context) {
 			Timeout:  rc.Timeout,
 			Keywords: rc.Keywords,
 		})
-		status := monitor.CheckFailure
+		result.CheckedAt = time.Now()
 		if err != nil {
-			result.Status = status
-			result.CheckedAt = time.Now()
-			result.Error = fmt.Sprintf("%v", err)
+			result.Error = err
 			s.results <- result
 			continue
 		}
 
-		var resErr string
-		if res.Err != nil {
-			resErr = res.Err.Error()
-		} else if res.Reachable {
-			status = monitor.CheckSuccess
-		}
-
-		result.Status = status
+		result.Reachable = res.Reachable
 		result.StatusCode = res.StatusCode
 		result.ResponseTime = res.ResponseTime
-		result.CheckedAt = time.Now() // TODO: replace with correct "Now" time
-		result.Error = resErr
+		result.Error = res.Err
 		result.FoundKeywords = res.FoundKeywords
 		// result.ScreenshotPath TODO: do later
 

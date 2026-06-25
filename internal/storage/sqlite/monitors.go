@@ -431,7 +431,7 @@ func (s *Storage) SaveCheckResult(ctx context.Context, r monitor.MonitorCheckRes
 	)
 	if err != nil {
 		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-			return fmt.Errorf("%s: insert monitor: %w", op, monitor.ErrMonitorExists)
+			return fmt.Errorf("%s: insert check result: %w", op, monitor.ErrCheckResultExists)
 		}
 		return fmt.Errorf("%s: %w", op, err)
 	}

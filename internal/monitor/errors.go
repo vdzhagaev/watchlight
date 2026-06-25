@@ -9,6 +9,8 @@ var (
 	ErrMonitorNotFound  = errors.New("monitor not found")
 	ErrMonitorExists    = errors.New("monitor already exists")
 
+	ErrCheckResultExists = errors.New("result with same id already exists")
+
 	ErrCheckIntervalTooSmall = errors.New("check interval below minimum")
 	ErrCheckTimeoutTooSmall  = errors.New("check timeout below minimum")
 	ErrMaxAttemptsTooSmall   = errors.New("max attempts below minimum")
