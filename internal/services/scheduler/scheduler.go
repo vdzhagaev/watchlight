@@ -30,20 +30,21 @@ type Event struct {
 }
 
 type Scheduler struct {
-	wg           sync.WaitGroup
-	jobs         chan monitor.RunnableCheck
-	results      chan monitor.MonitorCheckResult
-	events       chan Event
-	done         chan struct{}
-	cancel       context.CancelFunc
-	states       map[uuid.UUID]*State // uuid = configID
-	heap         StateHeap
-	logger       *slog.Logger
-	getter       ConfigsGetter
-	handler      ResultHandler
-	workers      int
-	checkers     map[monitor.CheckType]checker.Checker
-	writeTimeout time.Duration
+	wg             sync.WaitGroup
+	jobs           chan monitor.RunnableCheck
+	results        chan monitor.MonitorCheckResult
+	events         chan Event
+	done           chan struct{}
+	dispatchCancel context.CancelFunc
+	checkCancel    context.CancelFunc
+	states         map[uuid.UUID]*State // uuid = configID
+	heap           StateHeap
+	logger         *slog.Logger
+	getter         ConfigsGetter
+	handler        ResultHandler
+	workers        int
+	checkers       map[monitor.CheckType]checker.Checker
+	writeTimeout   time.Duration
 }
 
 type Params struct {
@@ -60,7 +61,7 @@ type ConfigsGetter interface {
 }
 
 type ResultHandler interface {
-	Handle(context.Context, monitor.MonitorCheckResult) error
+	HandleCheckResult(context.Context, monitor.MonitorCheckResult) error
 }
 
 func New(p Params) *Scheduler {
@@ -85,10 +86,12 @@ func New(p Params) *Scheduler {
 }
 
 func (s *Scheduler) Start(ctx context.Context) error {
-	sctx, cancel := context.WithCancel(ctx)
-	s.cancel = cancel
+	dispatchCtx, dispatchCancel := context.WithCancel(ctx)
+	checkCtx, checkCancel := context.WithCancel(ctx)
+	s.dispatchCancel = dispatchCancel
+	s.checkCancel = checkCancel
 
-	entries, err := s.buildEntries(sctx)
+	entries, err := s.buildEntries(ctx)
 	if err != nil {
 		return fmt.Errorf("scheduler initial load: %w", err)
 	}
@@ -100,14 +103,14 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	}
 	heap.Init(&s.heap)
 
-	go s.schedule(sctx)
+	go s.schedule(dispatchCtx)
 
 	for i := 0; i < s.workers; i++ {
 		s.wg.Add(1)
-		go s.worker(sctx)
+		go s.worker(checkCtx)
 	}
 
-	go s.consume(sctx)
+	go s.consume(dispatchCtx)
 
 	go func() {
 		s.wg.Wait()
@@ -118,12 +121,17 @@ func (s *Scheduler) Start(ctx context.Context) error {
 }
 
 func (s *Scheduler) Stop(ctx context.Context) error {
-	// TODO: s.cancel is nil if Stop is called before Start — add a guard or document the contract.
-	s.cancel()
+	if s.dispatchCancel == nil {
+		return nil
+	}
+
+	s.dispatchCancel()
 	select {
 	case <-s.done:
 		return nil
 	case <-ctx.Done():
+		s.checkCancel()
+		<-s.done
 		return ctx.Err()
 	}
 }
@@ -267,7 +275,7 @@ func (s *Scheduler) consume(ctx context.Context) {
 	defer close(s.done)
 	for r := range s.results {
 		writeCtx, cancel := context.WithTimeout(context.Background(), s.writeTimeout)
-		err := s.handler.Handle(writeCtx, r)
+		err := s.handler.HandleCheckResult(writeCtx, r)
 		if err != nil {
 			s.logger.Error("write result failed. do something with it later!.", sl.Err(err))
 		}
