@@ -57,6 +57,24 @@ func (c *fakeChecker) Calls() int {
 	return c.calls
 }
 
+// blockingChecker blocks inside Check until released, then reports whether its
+// context was cancelled. It proves an in-flight check is allowed to finish on
+// Stop instead of being cancelled into a failure.
+type blockingChecker struct {
+	entered chan struct{}
+	once    sync.Once
+	release chan struct{}
+}
+
+func (c *blockingChecker) Check(ctx context.Context, _ checker.CheckRequest) (checker.CheckResult, error) {
+	c.once.Do(func() { close(c.entered) })
+	<-c.release
+	if err := ctx.Err(); err != nil {
+		return checker.CheckResult{}, err // cancelled mid-flight -> would become a failure
+	}
+	return checker.CheckResult{Reachable: true, StatusCode: 200}, nil
+}
+
 // fakeHandler forwards every handled result onto a buffered channel so tests can
 // observe completions without depending on wall-clock timing.
 type fakeHandler struct {
@@ -67,7 +85,7 @@ func newFakeHandler() *fakeHandler {
 	return &fakeHandler{results: make(chan monitor.MonitorCheckResult, 1024)}
 }
 
-func (h *fakeHandler) Handle(ctx context.Context, r monitor.MonitorCheckResult) error {
+func (h *fakeHandler) HandleCheckResult(ctx context.Context, r monitor.MonitorCheckResult) error {
 	select {
 	case h.results <- r:
 	case <-ctx.Done():
@@ -317,8 +335,51 @@ func TestScheduler_StopReturnsBeforeDeadline(t *testing.T) {
 	assert.Less(t, time.Since(start), 2*time.Second)
 }
 
-// TODO(scheduler): unskip once Stop guards against being called before Start.
-// Today s.cancel is nil at that point and Stop panics (see scheduler.go).
+// Stop before Start is a no-op: the cancel funcs are still nil, so Stop must
+// return without panicking.
 func TestScheduler_StopBeforeStart(t *testing.T) {
-	t.Skip("known issue: Stop before Start panics on nil cancel — add a guard in scheduler.go")
+	s := newTestScheduler(&fakeGetter{}, newFakeHandler(), map[monitor.CheckType]checker.Checker{})
+	assert.NoError(t, s.Stop(context.Background()))
+}
+
+// An in-flight check must be allowed to finish on Stop, not cancelled into a
+// spurious failure. Stop cancels the dispatcher immediately but leaves running
+// checks on a separate context until the shutdown budget is exhausted.
+func TestScheduler_InFlightCheckDrainsOnStop(t *testing.T) {
+	chk := &blockingChecker{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	h := newFakeHandler()
+	s := newTestScheduler(
+		&fakeGetter{checks: []monitor.RunnableCheck{runnable(monitor.CheckHTTP, 10*time.Millisecond)}},
+		h,
+		map[monitor.CheckType]checker.Checker{monitor.CheckHTTP: chk},
+	)
+	require.NoError(t, s.Start(context.Background()))
+
+	// wait until a check is actually running inside a worker
+	select {
+	case <-chk.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("check never entered")
+	}
+
+	stopErr := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		stopErr <- s.Stop(ctx)
+	}()
+
+	// give Stop time to cancel the dispatcher before the check completes, so the
+	// assertion exercises the "cancel arrived mid-flight" path
+	time.Sleep(100 * time.Millisecond)
+	close(chk.release)
+
+	require.NoError(t, <-stopErr)
+
+	r := recvResult(t, h, 2*time.Second)
+	assert.Equal(t, monitor.CheckSuccess, r.Status,
+		"in-flight check was cancelled into a failure instead of draining")
 }
