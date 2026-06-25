@@ -127,6 +127,83 @@ func TestService_Delete_Propagates(t *testing.T) {
 	}
 }
 
+// Regression for the nil-id UNIQUE collision (#38): every call must mint a
+// fresh, non-nil id, so two results built from the *same* input still persist
+// as distinct rows instead of colliding on UNIQUE(id).
+func TestService_HandleCheckResult_MintsFreshID(t *testing.T) {
+	svc, repo := newSvc(t)
+
+	var saved []monitor.MonitorCheckResult
+	repo.EXPECT().
+		SaveCheckResult(mock.Anything, mock.AnythingOfType("monitor.MonitorCheckResult")).
+		Run(func(_ context.Context, r monitor.MonitorCheckResult) { saved = append(saved, r) }).
+		Return(nil).
+		Times(2)
+
+	in := monitor.CheckResultInput{
+		MonitorID: uuid.New(),
+		ConfigID:  uuid.New(),
+		Reachable: true,
+	}
+	for i := 0; i < 2; i++ {
+		if err := svc.HandleCheckResult(context.Background(), in); err != nil {
+			t.Fatalf("HandleCheckResult #%d: %v", i, err)
+		}
+	}
+
+	if saved[0].ID == uuid.Nil || saved[1].ID == uuid.Nil {
+		t.Errorf("minted nil id: %v, %v", saved[0].ID, saved[1].ID)
+	}
+	if saved[0].ID == saved[1].ID {
+		t.Errorf("two results share id %v — would collide on UNIQUE(id)", saved[0].ID)
+	}
+}
+
+// Status is derived in the domain from raw facts. Failure-without-error
+// (Reachable=false, Error=nil) is a legitimate case and must not panic.
+func TestService_HandleCheckResult_DerivesStatus(t *testing.T) {
+	tests := []struct {
+		name       string
+		reachable  bool
+		err        error
+		wantStatus monitor.CheckStatus
+		wantMsg    string
+	}{
+		{"reachable, no error", true, nil, monitor.CheckSuccess, ""},
+		{"unreachable, no error", false, nil, monitor.CheckFailure, ""},
+		{"error", false, errors.New("boom"), monitor.CheckFailure, "boom"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo := newSvc(t)
+
+			var got monitor.MonitorCheckResult
+			repo.EXPECT().
+				SaveCheckResult(mock.Anything, mock.AnythingOfType("monitor.MonitorCheckResult")).
+				Run(func(_ context.Context, r monitor.MonitorCheckResult) { got = r }).
+				Return(nil).
+				Once()
+
+			err := svc.HandleCheckResult(context.Background(), monitor.CheckResultInput{
+				MonitorID: uuid.New(),
+				ConfigID:  uuid.New(),
+				Reachable: tt.reachable,
+				Error:     tt.err,
+			})
+			if err != nil {
+				t.Fatalf("HandleCheckResult: %v", err)
+			}
+			if got.Status != tt.wantStatus {
+				t.Errorf("Status = %v, want %v", got.Status, tt.wantStatus)
+			}
+			if got.Error != tt.wantMsg {
+				t.Errorf("Error = %q, want %q", got.Error, tt.wantMsg)
+			}
+		})
+	}
+}
+
 func TestService_List_Delegates(t *testing.T) {
 	svc, repo := newSvc(t)
 	want := []monitor.Monitor{{Name: "a"}, {Name: "b"}}

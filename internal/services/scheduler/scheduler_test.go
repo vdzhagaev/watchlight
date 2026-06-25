@@ -78,14 +78,14 @@ func (c *blockingChecker) Check(ctx context.Context, _ checker.CheckRequest) (ch
 // fakeHandler forwards every handled result onto a buffered channel so tests can
 // observe completions without depending on wall-clock timing.
 type fakeHandler struct {
-	results chan monitor.MonitorCheckResult
+	results chan monitor.CheckResultInput
 }
 
 func newFakeHandler() *fakeHandler {
-	return &fakeHandler{results: make(chan monitor.MonitorCheckResult, 1024)}
+	return &fakeHandler{results: make(chan monitor.CheckResultInput, 1024)}
 }
 
-func (h *fakeHandler) HandleCheckResult(ctx context.Context, r monitor.MonitorCheckResult) error {
+func (h *fakeHandler) HandleCheckResult(ctx context.Context, r monitor.CheckResultInput) error {
 	select {
 	case h.results <- r:
 	case <-ctx.Done():
@@ -130,14 +130,14 @@ func startAndCleanup(t *testing.T, s *Scheduler) {
 }
 
 // recvResult waits for one handled result or fails after timeout.
-func recvResult(t *testing.T, h *fakeHandler, timeout time.Duration) monitor.MonitorCheckResult {
+func recvResult(t *testing.T, h *fakeHandler, timeout time.Duration) monitor.CheckResultInput {
 	t.Helper()
 	select {
 	case r := <-h.results:
 		return r
 	case <-time.After(timeout):
 		t.Fatal("timed out waiting for a check result")
-		return monitor.MonitorCheckResult{}
+		return monitor.CheckResultInput{}
 	}
 }
 
@@ -203,7 +203,6 @@ func TestScheduler_DispatchesAndRecordsSuccess(t *testing.T) {
 	r := recvResult(t, h, 2*time.Second)
 	assert.Equal(t, rc.ConfigID, r.ConfigID)
 	assert.Equal(t, rc.MonitorID, r.MonitorID)
-	assert.Equal(t, monitor.CheckSuccess, r.Status)
 	assert.Equal(t, 200, r.StatusCode)
 	assert.Equal(t, 5*time.Millisecond, r.ResponseTime)
 }
@@ -278,8 +277,7 @@ func TestScheduler_UnknownCheckerType_RecordsFailure(t *testing.T) {
 	startAndCleanup(t, s)
 
 	r := recvResult(t, h, 2*time.Second)
-	assert.Equal(t, monitor.CheckFailure, r.Status)
-	assert.Contains(t, r.Error, "checker")
+	assert.ErrorContains(t, r.Error, "checker")
 }
 
 func TestScheduler_CheckerError_RecordsFailure(t *testing.T) {
@@ -295,8 +293,7 @@ func TestScheduler_CheckerError_RecordsFailure(t *testing.T) {
 	startAndCleanup(t, s)
 
 	r := recvResult(t, h, 2*time.Second)
-	assert.Equal(t, monitor.CheckFailure, r.Status)
-	assert.Contains(t, r.Error, "boom")
+	assert.ErrorContains(t, r.Error, "boom")
 }
 
 func TestScheduler_NoConfigs_StartsAndStopsCleanly(t *testing.T) {
@@ -380,6 +377,8 @@ func TestScheduler_InFlightCheckDrainsOnStop(t *testing.T) {
 	require.NoError(t, <-stopErr)
 
 	r := recvResult(t, h, 2*time.Second)
-	assert.Equal(t, monitor.CheckSuccess, r.Status,
+	assert.True(t, r.Reachable,
 		"in-flight check was cancelled into a failure instead of draining")
+	assert.NoError(t, r.Error)
+	assert.Equal(t, 200, r.StatusCode)
 }
