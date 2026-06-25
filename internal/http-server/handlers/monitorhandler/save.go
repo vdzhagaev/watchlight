@@ -16,7 +16,7 @@ import (
 )
 
 type CheckRequest struct {
-	Type string `json:"type" validate:"required,oneof=http ping headless"`
+	Type              string   `json:"type" validate:"required,oneof=http ping headless"`
 	Interval          int      `json:"interval,omitempty" validate:"omitempty,min=10"`
 	Timeout           int      `json:"timeout,omitempty" validate:"omitempty,min=2"`
 	MaxAttempts       int      `json:"max_attempts,omitempty" validate:"omitempty,min=1"`

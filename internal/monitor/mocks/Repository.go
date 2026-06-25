@@ -281,6 +281,63 @@ func (_c *MockRepository_GetMonitorList_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
+// SaveCheckResult provides a mock function for the type MockRepository
+func (_mock *MockRepository) SaveCheckResult(ctx context.Context, r monitor.MonitorCheckResult) error {
+	ret := _mock.Called(ctx, r)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveCheckResult")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, monitor.MonitorCheckResult) error); ok {
+		r0 = returnFunc(ctx, r)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockRepository_SaveCheckResult_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveCheckResult'
+type MockRepository_SaveCheckResult_Call struct {
+	*mock.Call
+}
+
+// SaveCheckResult is a helper method to define mock.On call
+//   - ctx context.Context
+//   - r monitor.MonitorCheckResult
+func (_e *MockRepository_Expecter) SaveCheckResult(ctx interface{}, r interface{}) *MockRepository_SaveCheckResult_Call {
+	return &MockRepository_SaveCheckResult_Call{Call: _e.mock.On("SaveCheckResult", ctx, r)}
+}
+
+func (_c *MockRepository_SaveCheckResult_Call) Run(run func(ctx context.Context, r monitor.MonitorCheckResult)) *MockRepository_SaveCheckResult_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 monitor.MonitorCheckResult
+		if args[1] != nil {
+			arg1 = args[1].(monitor.MonitorCheckResult)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRepository_SaveCheckResult_Call) Return(err error) *MockRepository_SaveCheckResult_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockRepository_SaveCheckResult_Call) RunAndReturn(run func(ctx context.Context, r monitor.MonitorCheckResult) error) *MockRepository_SaveCheckResult_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateMonitor provides a mock function for the type MockRepository
 func (_mock *MockRepository) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) (monitor.Monitor, error) {
 	ret := _mock.Called(ctx, id, in)

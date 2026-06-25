@@ -8,6 +8,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	// "time"
 
 	"github.com/vdzhagaev/watchlight/internal/config"
 	"github.com/vdzhagaev/watchlight/internal/http-server/handlers/monitorhandler"
@@ -15,6 +18,11 @@ import (
 	"github.com/vdzhagaev/watchlight/internal/lib/logger/handlers/slogpretty"
 	"github.com/vdzhagaev/watchlight/internal/lib/logger/sl"
 	"github.com/vdzhagaev/watchlight/internal/monitor"
+	"github.com/vdzhagaev/watchlight/internal/services/checker"
+	"github.com/vdzhagaev/watchlight/internal/services/scheduler"
+
+	// "github.com/vdzhagaev/watchlight/internal/services/checker"
+	// "github.com/vdzhagaev/watchlight/internal/services/scheduler"
 	"github.com/vdzhagaev/watchlight/internal/storage/sqlite"
 
 	"github.com/go-chi/chi/v5"
@@ -53,9 +61,30 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to init storage: %w", err)
 	}
-	defer storage.Close()
+
+	val := validator.New()
+
+	mService := monitor.NewService(storage, log)
+	mHandler := monitorhandler.NewHandler(log, val, mService)
 
 	// TODO: Workers: Scheduler & Checker
+	scheduler := scheduler.New(scheduler.Params{
+		Logger:  log,
+		Getter:  storage,
+		Handler: mService,
+		Workers: 50,
+		Checkers: map[monitor.CheckType]checker.Checker{
+			monitor.CheckPing: checker.TCPChecker{},
+			monitor.CheckHTTP: checker.HTTPChecker{},
+		},
+		WriteTimeout: 5 * time.Second,
+	})
+
+	err = scheduler.Start(appCtx)
+	if err != nil {
+		return fmt.Errorf("failed to start scheduler: %w", err)
+	}
+
 	router := chi.NewRouter()
 
 	router.Use(middleware.RequestID)
@@ -64,11 +93,6 @@ func run() error {
 	router.Use(logger.New(log))
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.URLFormat)
-
-	val := validator.New()
-
-	mService := monitor.NewService(storage, log)
-	mHandler := monitorhandler.NewHandler(log, val, mService)
 
 	router.Route("/monitors", func(r chi.Router) {
 		r.Post("/", mHandler.Save)
@@ -105,6 +129,12 @@ func run() error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.HTTPServer.ShutdownTimeout)
 	defer cancel()
+
+	if err := scheduler.Stop(shutdownCtx); err != nil {
+		log.Warn("scheduler drain timed out", sl.Err(err))
+	}
+
+	defer storage.Close()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("server shutdown failed: %w", err)

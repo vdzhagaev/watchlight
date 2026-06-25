@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/vdzhagaev/watchlight/internal/monitor"
 
@@ -42,7 +43,6 @@ func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 		max_attempts, do_error_screenshot, keywords)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
-
 	if err != nil {
 		return fmt.Errorf("%s: prepare stmt: %w", op, err)
 	}
@@ -108,7 +108,6 @@ func (s *Storage) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.Up
 	)
 
 	res, err := s.db.ExecContext(ctx, query, args...)
-
 	if err != nil {
 		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
 			return monitor.Monitor{}, fmt.Errorf("%s: %w", op, monitor.ErrMonitorExists)
@@ -142,7 +141,6 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 	`
 
 	rows, err := s.db.QueryContext(ctx, query, id)
-
 	if err != nil {
 		return monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
 	}
@@ -228,7 +226,6 @@ func (s *Storage) DeleteMonitor(ctx context.Context, id uuid.UUID) error {
 	}
 
 	count, err := res.RowsAffected()
-
 	if err != nil {
 		return fmt.Errorf("%s: deleting row error: %w", op, err)
 	}
@@ -255,7 +252,6 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 	`
 
 	rows, err := s.db.QueryContext(ctx, query)
-
 	if err != nil {
 		return []monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
 	}
@@ -335,4 +331,110 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 	}
 
 	return output, nil
+}
+
+func (s *Storage) ListEnabledCheckConfigs(ctx context.Context) ([]monitor.RunnableCheck, error) {
+	const op = "storage.sqlite.ListEnabledCheckConfigs"
+
+	query := `
+		SELECT
+			m.id, m.url,
+			c.id, c.check_type, c.check_interval,
+			c.check_timeout, c.max_attempts, c.keywords
+		FROM monitors AS m
+		JOIN monitor_check_configs AS c ON m.id = c.monitor_id
+		WHERE c.is_enabled = 1
+		ORDER BY m.id
+	`
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return []monitor.RunnableCheck{}, fmt.Errorf("%s: %w", op, err)
+	}
+	defer rows.Close()
+
+	var checks []monitor.RunnableCheck
+
+	for rows.Next() {
+		var (
+			mID  uuid.NullUUID
+			mURL string
+
+			cID          uuid.NullUUID
+			cType        monitor.CheckType
+			cInterval    int64
+			cTimeout     int64
+			cMaxAttempts int64
+			cKeywordsRaw sql.NullString
+		)
+
+		if err := rows.Scan(
+			&mID, &mURL,
+			&cID, &cType, &cInterval, &cTimeout,
+			&cMaxAttempts, &cKeywordsRaw,
+		); err != nil {
+			return []monitor.RunnableCheck{}, fmt.Errorf("%s: scan config: %w", op, err)
+		}
+
+		check := monitor.RunnableCheck{
+			MonitorID:   mID.UUID,
+			ConfigID:    cID.UUID,
+			URL:         mURL,
+			CheckType:   cType,
+			Interval:    time.Duration(int(cInterval)) * time.Second,
+			Timeout:     time.Duration(int(cTimeout)) * time.Second,
+			MaxAttempts: int(cMaxAttempts),
+		}
+
+		if cKeywordsRaw.Valid && cKeywordsRaw.String != "" {
+			err := json.Unmarshal([]byte(cKeywordsRaw.String), &check.Keywords)
+			if err != nil {
+				return []monitor.RunnableCheck{}, fmt.Errorf("%s: error unmarshal keywords from base: %w", op, err)
+			}
+		}
+
+		checks = append(checks, check)
+	}
+
+	if err := rows.Err(); err != nil {
+		return []monitor.RunnableCheck{}, fmt.Errorf("%s: rows iteration error: %w", op, err)
+	}
+
+	return checks, nil
+}
+
+func (s *Storage) SaveCheckResult(ctx context.Context, r monitor.MonitorCheckResult) error {
+	const op = "storage.sqlite.SaveCheckResult"
+
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO monitor_check_results (
+			id, 
+			monitor_id, 
+			config_id,
+			status,
+			status_code,
+			response_time_ns,
+			checked_at,
+			error_message,
+			screenshot_path
+		) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID,
+		r.MonitorID,
+		r.ConfigID,
+		r.Status,
+		r.StatusCode,
+		r.ResponseTime.Nanoseconds(),
+		r.CheckedAt,
+		r.Error,
+		r.ScreenshotPath,
+	)
+	if err != nil {
+		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			return fmt.Errorf("%s: insert monitor: %w", op, monitor.ErrMonitorExists)
+		}
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
 }
