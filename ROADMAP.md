@@ -105,9 +105,36 @@ within `shutdown_timeout`.
 
 **Known limitation:** check configs are loaded once at start-up; monitors
 created or changed while the scheduler is running are not picked up until
-restart. Addressed in v0.5.
+restart. Addressed in v0.6.
 
-### v0.5 — Live monitoring [next]
+### v0.5 — Monitor remodel: host + per-path checks [next]
+
+Reframe a monitor as a host rather than a single URL, so the check model
+matches reality: host-level reachability and per-path HTTP checks are
+different things.
+
+- Monitor identity is the host (not the full URL)
+- Each monitor has exactly one ping check: created and enabled by default,
+  can be disabled (hosts that block TCP), cannot be removed
+- HTTP checks are a per-path collection (`/`, `/page-1`), unique by
+  `(monitor, path)`, with assertions (expected status, keywords) on the check
+- Monitor is the aggregate root; config changes go through it (add / update /
+  remove an HTTP check, enable / disable ping)
+- Root invariants: exactly one ping (never removable); no two HTTP checks on
+  the same path
+- Domain types stay honest (ping has no path); SQLite may keep one check
+  table with nullable columns, mapped in the repository
+
+**Deliberately out of scope:**
+
+- Browser / headless checks (separate later feature)
+- Monitor status rollup and scheduler reconfiguration (v0.6)
+
+**Exit criteria:** creating a monitor yields an enabled ping check plus the
+given per-path HTTP checks; the aggregate operations enforce the invariants
+above (under tests); storage round-trips the new shape.
+
+### v0.6 — Live monitoring [planned]
 
 Make monitoring stateful and self-updating: the scheduler keeps up with
 configuration changes, and each monitor carries a derived status.
@@ -137,7 +164,7 @@ configuration changes, and each monitor carries a derived status.
 scheduler checks without a restart; a failing check moves the monitor to
 `down` and a recovery moves it back to `up`; current status is queryable.
 
-### v0.6 — Incidents + notifications [planned]
+### v0.7 — Incidents + notifications [planned]
 
 Turn status changes into tracked incidents and notifications.
 
@@ -154,7 +181,7 @@ Turn status changes into tracked incidents and notifications.
 **Exit criteria:** a failing monitor opens an incident and posts to Slack;
 recovery closes the incident and posts a second message.
 
-### v0.7 — Migrations [planned]
+### v0.8 — Migrations [planned]
 
 Build a hand-rolled migration mechanism (no third-party tool) so the
 SQLite schema can evolve without "delete `storage.db`" workarounds. The
