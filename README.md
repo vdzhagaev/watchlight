@@ -2,7 +2,9 @@
 
 A lightweight uptime monitoring service in Go.
 
-**Status:** `v0.1` (monitor CRUD) shipped, `v0.2` (SQLite parity) shipped. `v0.3` (checker) in progress. Not production-ready.
+**Status:** monitor CRUD, SQLite storage, the checker, and the background
+scheduler are shipped (through `v0.4`). Migrations (`v0.5`) are next. Not
+production-ready.
 
 ## Overview
 
@@ -14,8 +16,10 @@ land in later phases — see [ROADMAP](ROADMAP.md).
 ## Current scope
 
 - HTTP API for managing monitors (`POST`, `GET`, `GET /{id}`, `PATCH /{id}`, `DELETE /{id}`)
-- In-memory storage backend with seeded sample data
-- SQLite storage backend (implemented, not yet wired into `cmd/server`)
+- SQLite storage backend (the single persistence layer), wired into `cmd/server`
+- HTTP and ping checkers; results persisted with a per-check status
+- Background scheduler running enabled check configs on their intervals,
+  with graceful drain on shutdown
 - Graceful shutdown via `signal.NotifyContext`
 - Structured logging via `slog` with a pretty dev handler
 
@@ -36,8 +40,8 @@ The server binds to `localhost:8082` by default (see `config/local.yml`).
 # list monitors
 curl localhost:8082/monitors
 
-# fetch one
-curl localhost:8082/monitors/01931d4f-0000-7000-8000-000000000001
+# fetch one (use an id returned by list/create)
+curl localhost:8082/monitors/<monitor-id>
 
 # create a monitor
 curl -X POST localhost:8082/monitors \
@@ -56,16 +60,16 @@ curl -X POST localhost:8082/monitors \
 Feature-package layout (Ardan-Labs-style):
 
 ```
-cmd/server              composition root (wiring, HTTP server, shutdown)
-internal/monitor        feature package:
-                          entity, Input DTOs, Repository contract,
-                          Service layer, monitor.New() factory
-internal/storage/memory in-memory Repository implementation (default)
-internal/storage/sqlite SQLite Repository implementation (modernc.org/sqlite)
-internal/http-server    chi router, middleware, per-feature handlers
-internal/services       checker stubs (tcp for now; HTTP/headless planned)
-internal/config         cleanenv-based config loader
-internal/lib            shared helpers: slog handlers, API response shape
+cmd/server                composition root (wiring, HTTP server, scheduler, shutdown)
+internal/monitor          feature package:
+                            entity, Input DTOs, Repository contract,
+                            Service layer, monitor.New() factory
+internal/storage/sqlite   SQLite Repository implementation (modernc.org/sqlite)
+internal/http-server      chi router, middleware, per-feature handlers
+internal/services/checker HTTP + ping checkers behind a Checker interface
+internal/services/scheduler interval loop + worker pool, owned by cmd/server
+internal/config           cleanenv-based config loader
+internal/lib              shared helpers: slog handlers, API response shape
 ```
 
 Design notes:
@@ -92,12 +96,15 @@ http_server:
 ```
 
 ```bash
-# .env
-CONFIG_PATH=config/local.yml
-STORAGE_PATH=storage/storage.db
-APP_PORT=8080
-LOG_LEVEL=debug
+# .env  (loaded by `make run`)
+CONFIG_PATH=config/local.yml   # required — path to the YAML config
+STORAGE_PATH=storage/storage.db # required — SQLite database file
+# APP_ENV=local                # optional — local | dev | prod (slog format)
+# SLACK_WEBHOOK_URL=...         # optional — notifications (not yet wired)
 ```
+
+The HTTP listen address comes from `http_server.address` in the YAML config,
+not from an env var.
 
 ## Roadmap
 
