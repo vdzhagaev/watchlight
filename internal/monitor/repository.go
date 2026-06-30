@@ -14,5 +14,5 @@ type Repository interface {
 	CreateMonitor(ctx context.Context, m Monitor) error
 	UpdateMonitor(ctx context.Context, id uuid.UUID, in UpdateMonitorInput) (Monitor, error)
 	DeleteMonitor(ctx context.Context, id uuid.UUID) error
-	SaveCheckResult(ctx context.Context, r MonitorCheckResult) error
+	SaveCheckResult(ctx context.Context, r CheckResult) error
 }

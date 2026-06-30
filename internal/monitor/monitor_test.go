@@ -14,8 +14,8 @@ import (
 func TestNew_Success(t *testing.T) {
 	in := monitor.CreateMonitorInput{
 		Name: "Example",
-		URL:  "https://example.com",
-		CheckConfigs: []monitor.CreateMonitorCheckConfigInput{
+		Host: "example.com",
+		CheckConfigs: []monitor.CreateHTTPConfigInput{
 			{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3},
 		},
 	}
@@ -51,7 +51,7 @@ func TestNew_Validation(t *testing.T) {
 		wantErr error
 	}{
 		{"empty name", monitor.CreateMonitorInput{URL: "http://x.com"}, monitor.ErrMonitorEmptyName},
-		{"empty url", monitor.CreateMonitorInput{Name: "x"}, monitor.ErrMonitorEmptyURL},
+		{"empty url", monitor.CreateMonitorInput{Name: "x"}, monitor.ErrMonitorEmptyHost},
 		{"no check configs", monitor.CreateMonitorInput{Name: "x", URL: "http://x.com"}, monitor.ErrMonitorNoChecks},
 	}
 	for _, tt := range tests {
@@ -80,7 +80,7 @@ func TestNew_IsEnabledDefault(t *testing.T) {
 			got, err := monitor.New(monitor.CreateMonitorInput{
 				Name: "x",
 				URL:  "https://x.com",
-				CheckConfigs: []monitor.CreateMonitorCheckConfigInput{
+				CheckConfigs: []monitor.CreateHTTPConfigInput{
 					{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3, IsEnabled: tt.isEnabled},
 				},
 			})
@@ -99,7 +99,7 @@ func TestNew_CheckConfigValidation(t *testing.T) {
 		return monitor.CreateMonitorInput{
 			Name: "x",
 			URL:  "https://x.com",
-			CheckConfigs: []monitor.CreateMonitorCheckConfigInput{
+			CheckConfigs: []monitor.CreateHTTPConfigInput{
 				{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3},
 			},
 		}
@@ -129,7 +129,7 @@ func TestNew_CheckConfigDefaults(t *testing.T) {
 	got, err := monitor.New(monitor.CreateMonitorInput{
 		Name: "x",
 		URL:  "https://x.com",
-		CheckConfigs: []monitor.CreateMonitorCheckConfigInput{
+		CheckConfigs: []monitor.CreateHTTPConfigInput{
 			{CheckType: monitor.CheckHTTP}, // all int fields zero -> defaults applied
 		},
 	})
@@ -152,7 +152,7 @@ func TestNew_MultipleChecks(t *testing.T) {
 	in := monitor.CreateMonitorInput{
 		Name: "multi",
 		URL:  "https://multi.example",
-		CheckConfigs: []monitor.CreateMonitorCheckConfigInput{
+		CheckConfigs: []monitor.CreateHTTPConfigInput{
 			{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3},
 			{CheckType: monitor.CheckPing, CheckInterval: 30, CheckTimeout: 2, MaxAttempts: 2},
 			{CheckType: monitor.CheckHeadless, CheckInterval: 300, CheckTimeout: 20, MaxAttempts: 1},

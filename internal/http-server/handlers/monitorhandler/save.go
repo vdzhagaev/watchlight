@@ -70,7 +70,7 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, c := range req.Checks {
-		m.CheckConfigs = append(m.CheckConfigs, monitor.CreateMonitorCheckConfigInput{
+		m.CheckConfigs = append(m.CheckConfigs, monitor.CreateHTTPConfigInput{
 			CheckType:         monitor.CheckType(c.Type),
 			CheckInterval:     c.Interval,
 			CheckTimeout:      c.Timeout,

@@ -18,7 +18,7 @@ import (
 const defaultWorkers = 10
 
 type State struct {
-	runnableCheck *monitor.RunnableCheck
+	runnableCheck *monitor.CheckJob
 	nextDue       time.Time
 	inFlight      bool
 	index         int
@@ -31,7 +31,7 @@ type Event struct {
 
 type Scheduler struct {
 	wg             sync.WaitGroup
-	jobs           chan monitor.RunnableCheck
+	jobs           chan monitor.CheckJob
 	results        chan monitor.CheckResultInput
 	events         chan Event
 	done           chan struct{}
@@ -57,7 +57,7 @@ type Params struct {
 }
 
 type ConfigsGetter interface {
-	ListEnabledCheckConfigs(context.Context) ([]monitor.RunnableCheck, error)
+	ListEnabledCheckConfigs(context.Context) ([]monitor.CheckJob, error)
 }
 
 type ResultHandler interface {
@@ -72,7 +72,7 @@ func New(p Params) *Scheduler {
 		p.WriteTimeout = 5 * time.Second
 	}
 	return &Scheduler{
-		jobs:         make(chan monitor.RunnableCheck),
+		jobs:         make(chan monitor.CheckJob),
 		results:      make(chan monitor.CheckResultInput, p.Workers),
 		events:       make(chan Event),
 		done:         make(chan struct{}),
@@ -234,7 +234,7 @@ func (s *Scheduler) worker(ctx context.Context) {
 			continue
 		}
 		res, err := c.Check(ctx, checker.CheckRequest{
-			URL:      rc.URL,
+			URL:      rc.Target,
 			Timeout:  rc.Timeout,
 			Keywords: rc.Keywords,
 		})

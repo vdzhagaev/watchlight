@@ -30,7 +30,7 @@ func newMonitor(t *testing.T, url string) monitor.Monitor {
 	m, err := monitor.New(monitor.CreateMonitorInput{
 		Name: "seed",
 		URL:  url,
-		CheckConfigs: []monitor.CreateMonitorCheckConfigInput{
+		CheckConfigs: []monitor.CreateHTTPConfigInput{
 			{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3, DoErrorScreenshot: true, Keywords: []string{"ok", "ready"}},
 		},
 	})

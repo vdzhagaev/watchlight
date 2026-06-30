@@ -7,45 +7,25 @@ import (
 )
 
 type CreateMonitorInput struct {
-	Name         string
-	URL          string
-	CheckConfigs []CreateMonitorCheckConfigInput
-}
-
-type CreateMonitorCheckConfigInput struct {
-	CheckType         CheckType
-	IsEnabled         *bool
-	CheckInterval     int
-	CheckTimeout      int
-	MaxAttempts       int
-	DoErrorScreenshot bool
-	Keywords          []string
+	Name        string
+	Host        string
+	PingConfig  *CreatePingConfigInput
+	HTTPConfigs []CreateHTTPConfigInput
 }
 
 type UpdateMonitorInput struct {
 	Name   *string
-	URL    *string
+	Host   *string
 	Status *MonitorStatus
 }
 
-type UpdateMonitorCheckConfigInput struct {
-	CheckType         *CheckType
-	IsEnabled         *bool
-	CheckInterval     *int
-	CheckTimeout      *int
-	MaxAttempts       *int
-	DoErrorScreenshot *bool
-	Keywords          *[]string
-}
-
 type CheckResultInput struct {
-	MonitorID      uuid.UUID
-	ConfigID       uuid.UUID
-	StatusCode     int
-	ResponseTime   time.Duration
-	CheckedAt      time.Time
-	Reachable      bool
-	Error          error
-	ScreenshotPath string
-	FoundKeywords  []string
+	MonitorID     uuid.UUID
+	ConfigID      uuid.UUID
+	StatusCode    int
+	ResponseTime  time.Duration
+	CheckedAt     time.Time
+	Reachable     bool
+	Error         error
+	FoundKeywords []string
 }

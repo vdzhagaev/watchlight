@@ -29,7 +29,7 @@ func validInput() monitor.CreateMonitorInput {
 	return monitor.CreateMonitorInput{
 		Name: "x",
 		URL:  "https://x.com",
-		CheckConfigs: []monitor.CreateMonitorCheckConfigInput{
+		CheckConfigs: []monitor.CreateHTTPConfigInput{
 			{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3},
 		},
 	}

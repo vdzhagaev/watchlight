@@ -63,7 +63,7 @@ func (h *MonitorHandler) Patch(w http.ResponseWriter, r *http.Request) {
 
 	mUpdateIn := monitor.UpdateMonitorInput{
 		Name:   req.Name,
-		URL:    req.URL,
+		Host:   req.URL,
 		Status: req.Status,
 	}
 

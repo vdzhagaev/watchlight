@@ -60,16 +60,15 @@ func (svc *Service) HandleCheckResult(ctx context.Context, r CheckResultInput) e
 		return err
 	}
 
-	return svc.repo.SaveCheckResult(ctx, MonitorCheckResult{
-		ID:             id,
-		MonitorID:      r.MonitorID,
-		ConfigID:       r.ConfigID,
-		Status:         status,
-		StatusCode:     r.StatusCode,
-		ResponseTime:   r.ResponseTime,
-		CheckedAt:      r.CheckedAt,
-		Error:          errorMessage,
-		ScreenshotPath: r.ScreenshotPath,
-		FoundKeywords:  r.FoundKeywords,
+	return svc.repo.SaveCheckResult(ctx, CheckResult{
+		ID:            id,
+		MonitorID:     r.MonitorID,
+		ConfigID:      r.ConfigID,
+		Status:        status,
+		StatusCode:    r.StatusCode,
+		ResponseTime:  r.ResponseTime,
+		CheckedAt:     r.CheckedAt,
+		Error:         errorMessage,
+		FoundKeywords: r.FoundKeywords,
 	})
 }

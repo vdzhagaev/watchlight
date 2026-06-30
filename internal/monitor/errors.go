@@ -1,11 +1,13 @@
 package monitor
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
 	ErrMonitorEmptyName = errors.New("monitor name can not be empty")
-	ErrMonitorEmptyURL  = errors.New("monitor url can not be empty")
-	ErrMonitorNoChecks  = errors.New("monitor must have at least one check")
+	ErrMonitorEmptyHost = errors.New("monitor host can not be empty")
 	ErrMonitorNotFound  = errors.New("monitor not found")
 	ErrMonitorExists    = errors.New("monitor already exists")
 
@@ -14,4 +16,23 @@ var (
 	ErrCheckIntervalTooSmall = errors.New("check interval below minimum")
 	ErrCheckTimeoutTooSmall  = errors.New("check timeout below minimum")
 	ErrMaxAttemptsTooSmall   = errors.New("max attempts below minimum")
+
+	ErrInvalidPort        = errors.New("invalid port for ping config")
+	ErrKeywordsRequireGET = errors.New("keywords can not passed with the HEAD method")
 )
+
+func ErrMethodNotAllowed(method string) error {
+	return fmt.Errorf("method not allowed: %s", method)
+}
+
+func ErrInvalidHTTPScheme(scheme string) error {
+	return fmt.Errorf("invalid http scheme: %s", scheme)
+}
+
+func ErrInvalidHost(host string) error {
+	return fmt.Errorf("invalid host: %s", host)
+}
+
+func ErrInvalidPath(path string) error {
+	return fmt.Errorf("invalid path: %s", path)
+}
