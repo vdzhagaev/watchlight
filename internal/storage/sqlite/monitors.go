@@ -291,12 +291,8 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 			m.id, m.name, m.host, m.status,
 			p.id, p.port, p.is_enabled, p.interval,
 			p.timeout, p.max_attempts,
-			h.id, h.scheme, h.path, h.method,
-			h.is_enabled, h.interval, h.timeout,
-			h.max_attempts, h.keywords
 		FROM monitors AS m
 		JOIN ping_configs AS p ON m.id = p.monitor_id
-		LEFT JOIN http_configs AS h ON m.id = h.monitor_id
 		ORDER BY m.id
 	`
 
@@ -428,15 +424,72 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 func (s *Storage) ListEnabledCheckConfigs(ctx context.Context) ([]monitor.CheckJob, error) {
 	const op = "storage.sqlite.ListEnabledCheckConfigs"
 
-	query := `
+	allPingConfigsQuery := `
 		SELECT
-			m.id, m.host,
-			c.id, c.check_type, c.check_interval,
-			c.check_timeout, c.max_attempts, c.keywords
+			p.id, p.port, p.is_enabled, p.interval,
+			p.timeout, p.max_attempts,
 		FROM monitors AS m
-		JOIN monitor_check_configs AS c ON m.id = c.monitor_id
-		WHERE c.is_enabled = 1
+		JOIN ping_configs AS p ON m.id = p.monitor_id
+		WHERE is_enabled = 1
 		ORDER BY m.id
+	`
+
+	monitorPingRows, err := s.db.QueryContext(ctx, allPingConfigsQuery)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	defer monitorPingRows.Close()
+
+	monitors := make(map[uuid.UUID]monitor.Monitor)
+	order := []uuid.UUID{}
+
+	for monitorPingRows.Next() {
+		var (
+			mID          uuid.NullUUID
+			mName        string
+			mHost        string
+			mStatus      string
+			pID          uuid.NullUUID
+			pPort        sql.NullInt64
+			pIsEnabled   sql.NullBool
+			pInterval    sql.NullInt64
+			pTimeout     sql.NullInt64
+			pMaxAttempts sql.NullInt64
+		)
+
+		if err := monitorPingRows.Scan(
+			&mID, &mName, &mHost, &mStatus,
+			&pID, &pPort, &pIsEnabled, &pInterval,
+			&pTimeout, &pMaxAttempts,
+		); err != nil {
+			return nil, fmt.Errorf("%s: monitor-ping scan error: %w", op, err)
+		}
+
+		pingConfig := monitor.ReconstructPingConfig(
+			pID.UUID,
+			mID.UUID,
+			uint16(pPort.Int64),
+			pIsEnabled.Bool,
+			int(pInterval.Int64),
+			int(pTimeout.Int64),
+			int(pMaxAttempts.Int64),
+		)
+
+		monitors[mID.UUID] = monitor.ReconstructMonitor(mID.UUID, mName, mHost, mStatus, pingConfig, []monitor.HTTPConfig{})
+		order = append(order, mID.UUID)
+	}
+
+	if err := monitorPingRows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: monitor-ping rows iteration error: %w", op, err)
+	}
+
+	allHttpConfQuery := `
+		SELECT
+			id, monitor_id, scheme, path, method, is_enabled,
+			interval, timeout, max_attempts, keywords
+		FROM http_configs
+		ORDER BY monitor_id
 	`
 
 	rows, err := s.db.QueryContext(ctx, query)
