@@ -68,6 +68,9 @@ func NewHTTPConfig(monitorID uuid.UUID, inConfig CreateHTTPConfigInput) (HTTPCon
 	if err != nil {
 		return HTTPConfig{}, err
 	}
+	if method == MethodHEAD && len(inConfig.Keywords) > 0 {
+		return HTTPConfig{}, ErrKeywordsRequireGET
+	}
 	id, err := uuid.NewV7()
 	if err != nil {
 		return HTTPConfig{}, err

@@ -223,6 +223,7 @@ func (s *Scheduler) worker(ctx context.Context) {
 		result := monitor.CheckResultInput{
 			MonitorID: rc.Base().MonitorID,
 			ConfigID:  rc.Base().ConfigID,
+			CheckType: rc.CheckType(),
 		}
 
 		if !ok {
@@ -233,12 +234,15 @@ func (s *Scheduler) worker(ctx context.Context) {
 			s.results <- result
 			continue
 		}
-		keywords := make([]string, 0)
+		var keywords []string
+		var method string
 		if hj, ok := rc.(monitor.HTTPJob); ok {
 			keywords = hj.Keywords
+			method = string(hj.Method)
 		}
 		res, err := c.Check(ctx, checker.CheckRequest{
 			Target:   rc.Target(),
+			Method:   method,
 			Timeout:  rc.Base().Timeout,
 			Keywords: keywords,
 		})

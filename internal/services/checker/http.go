@@ -22,10 +22,9 @@ func (h HTTPChecker) Check(ctx context.Context, command CheckRequest) (CheckResu
 	ctx, cancel := context.WithTimeout(ctx, command.Timeout)
 	defer cancel()
 
-	method := http.MethodHead
-
-	if len(command.Keywords) > 0 {
-		method = http.MethodGet
+	method := command.Method
+	if method == "" {
+		method = http.MethodHead
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, command.Target, nil)

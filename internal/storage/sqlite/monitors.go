@@ -504,7 +504,7 @@ func (s *Storage) ListEnabledCheckConfigs(ctx context.Context) ([]monitor.CheckJ
 
 	allHttpConfQuery := `
 		SELECT
-			h.id, h.monitor_id, h.scheme, h.path, h.method, h.is_enabled,
+			h.id, h.monitor_id, h.scheme, h.path, h.method,
 			h.interval, h.timeout, h.max_attempts, h.keywords,
 			m.host
 		FROM http_configs as h
@@ -580,21 +580,35 @@ func (s *Storage) ListEnabledCheckConfigs(ctx context.Context) ([]monitor.CheckJ
 func (s *Storage) SaveCheckResult(ctx context.Context, r monitor.CheckResult) error {
 	const op = "storage.sqlite.SaveCheckResult"
 
+	// check_results keys the config by type: exactly one of ping/http is set
+	// (enforced by a table CHECK). CheckType tells us which column owns ConfigID.
+	var pingID, httpID uuid.NullUUID
+	switch r.CheckType {
+	case monitor.CheckPing:
+		pingID = uuid.NullUUID{UUID: r.ConfigID, Valid: true}
+	case monitor.CheckHTTP:
+		httpID = uuid.NullUUID{UUID: r.ConfigID, Valid: true}
+	default:
+		return fmt.Errorf("%s: cannot persist result for check type %q", op, r.CheckType)
+	}
+
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO monitor_check_results (
+		`INSERT INTO check_results (
 			id,
 			monitor_id,
-			config_id,
+			ping_config_id,
+			http_config_id,
 			status,
 			status_code,
 			response_time_ns,
 			checked_at,
 			error_message
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ID,
 		r.MonitorID,
-		r.ConfigID,
+		pingID,
+		httpID,
 		r.Status,
 		r.StatusCode,
 		r.ResponseTime.Nanoseconds(),

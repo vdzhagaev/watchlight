@@ -22,6 +22,7 @@ type UpdateMonitorInput struct {
 type CheckResultInput struct {
 	MonitorID     uuid.UUID
 	ConfigID      uuid.UUID
+	CheckType     CheckType
 	StatusCode    int
 	ResponseTime  time.Duration
 	CheckedAt     time.Time

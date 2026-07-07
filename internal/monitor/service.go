@@ -72,6 +72,7 @@ func (svc *Service) HandleCheckResult(ctx context.Context, r CheckResultInput) e
 		ID:            id,
 		MonitorID:     r.MonitorID,
 		ConfigID:      r.ConfigID,
+		CheckType:     r.CheckType,
 		Status:        status,
 		StatusCode:    r.StatusCode,
 		ResponseTime:  r.ResponseTime,

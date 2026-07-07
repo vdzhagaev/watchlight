@@ -151,6 +151,33 @@ func TestStorage_List(t *testing.T) {
 	}
 }
 
+func TestStorage_ListEnabledCheckConfigs(t *testing.T) {
+	st := newStorage(t)
+	ctx := context.Background()
+	if err := st.CreateMonitor(ctx, newMonitor(t, "cfg.example")); err != nil {
+		t.Fatalf("CreateMonitor: %v", err)
+	}
+
+	jobs, err := st.ListEnabledCheckConfigs(ctx)
+	if err != nil {
+		t.Fatalf("ListEnabledCheckConfigs: %v", err)
+	}
+	// One intrinsic ping + one enabled HTTP check.
+	if len(jobs) != 2 {
+		t.Fatalf("len(jobs) = %d, want 2", len(jobs))
+	}
+	types := map[monitor.CheckType]bool{}
+	for _, j := range jobs {
+		types[j.CheckType()] = true
+		if j.Target() == "" {
+			t.Errorf("%s job has empty target", j.CheckType())
+		}
+	}
+	if !types[monitor.CheckPing] || !types[monitor.CheckHTTP] {
+		t.Errorf("missing job type, got: %v", types)
+	}
+}
+
 func TestStorage_Create_DuplicateHost(t *testing.T) {
 	st := newStorage(t)
 	ctx := context.Background()

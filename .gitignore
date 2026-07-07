@@ -7,3 +7,6 @@ vendor/
 *.log
 
 storage/*
+
+# build artifacts
+*.exe
