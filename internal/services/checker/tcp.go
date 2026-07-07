@@ -15,7 +15,7 @@ type TCPChecker struct{}
 func (c TCPChecker) Check(ctx context.Context, req CheckRequest) (CheckResult, error) {
 	const op = "services.checker.tcp.check"
 
-	hostPort, err := netutil.PrepareAddress(req.URL)
+	hostPort, err := netutil.PrepareAddress(req.Target)
 	if err != nil {
 		return CheckResult{}, err
 	}

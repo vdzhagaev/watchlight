@@ -49,7 +49,12 @@ func NewPingConfig(monitorID uuid.UUID, inConfig CreatePingConfigInput) (PingCon
 	if err != nil {
 		return PingConfig{}, err
 	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return PingConfig{}, err
+	}
 	return PingConfig{
+		ID:          id,
 		MonitorID:   monitorID,
 		Port:        port,
 		IsEnabled:   enabledOrDefault(inConfig.IsEnabled),

@@ -15,25 +15,39 @@ import (
 	"github.com/vdzhagaev/watchlight/internal/lib/logger/sl"
 )
 
-type CheckRequest struct {
-	Type              string   `json:"type" validate:"required,oneof=http ping headless"`
-	Interval          int      `json:"interval,omitempty" validate:"omitempty,min=10"`
-	Timeout           int      `json:"timeout,omitempty" validate:"omitempty,min=2"`
-	MaxAttempts       int      `json:"max_attempts,omitempty" validate:"omitempty,min=1"`
-	DoErrorScreenshot bool     `json:"do_error_screenshot"`
-	Keywords          []string `json:"keywords,omitempty"`
-	IsEnabled         *bool    `json:"is_enabled,omitempty"`
+// PingCheckRequest overrides the intrinsic ping check. Optional: when omitted the
+// monitor still gets a default ping config.
+type PingCheckRequest struct {
+	Port        uint16 `json:"port,omitempty"`
+	Interval    int    `json:"interval,omitempty" validate:"omitempty,min=10"`
+	Timeout     int    `json:"timeout,omitempty" validate:"omitempty,min=2"`
+	MaxAttempts int    `json:"max_attempts,omitempty" validate:"omitempty,min=1"`
+	IsEnabled   *bool  `json:"is_enabled,omitempty"`
+}
+
+// HTTPCheckRequest is a per-path HTTP check. Scheme and Method are required per
+// check because the domain has no default for them.
+type HTTPCheckRequest struct {
+	Scheme      string   `json:"scheme" validate:"required,oneof=http https"`
+	Path        string   `json:"path,omitempty"`
+	Method      string   `json:"method" validate:"required,oneof=GET HEAD"`
+	Keywords    []string `json:"keywords,omitempty"`
+	Interval    int      `json:"interval,omitempty" validate:"omitempty,min=10"`
+	Timeout     int      `json:"timeout,omitempty" validate:"omitempty,min=2"`
+	MaxAttempts int      `json:"max_attempts,omitempty" validate:"omitempty,min=1"`
+	IsEnabled   *bool    `json:"is_enabled,omitempty"`
 }
 
 type SaveRequest struct {
-	MonitorURL  string         `json:"url" validate:"required,url"`
-	MonitorName string         `json:"name,omitempty"`
-	Checks      []CheckRequest `json:"checks" validate:"required,min=1,dive"`
+	Host       string             `json:"host" validate:"required,hostname_rfc1123|ip"`
+	Name       string             `json:"name,omitempty"`
+	Ping       *PingCheckRequest  `json:"ping,omitempty"`
+	HTTPChecks []HTTPCheckRequest `json:"http_checks,omitempty" validate:"omitempty,dive"`
 }
 
 type SaveResponse struct {
 	resp.Response
-	Monitor monitor.Monitor `json:"monitor"`
+	Monitor monitorView `json:"monitor"`
 }
 
 func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
@@ -65,27 +79,43 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m := monitor.CreateMonitorInput{
-		URL:  req.MonitorURL,
-		Name: req.MonitorName,
+		Host: req.Host,
+		Name: req.Name,
 	}
 
-	for _, c := range req.Checks {
-		m.CheckConfigs = append(m.CheckConfigs, monitor.CreateHTTPConfigInput{
-			CheckType:         monitor.CheckType(c.Type),
-			CheckInterval:     c.Interval,
-			CheckTimeout:      c.Timeout,
-			MaxAttempts:       c.MaxAttempts,
-			DoErrorScreenshot: c.DoErrorScreenshot,
-			Keywords:          c.Keywords,
-			IsEnabled:         c.IsEnabled,
+	if req.Ping != nil {
+		m.PingConfig = &monitor.CreatePingConfigInput{
+			Port:        req.Ping.Port,
+			IsEnabled:   req.Ping.IsEnabled,
+			Interval:    req.Ping.Interval,
+			Timeout:     req.Ping.Timeout,
+			MaxAttempts: req.Ping.MaxAttempts,
+		}
+	}
+
+	for _, c := range req.HTTPChecks {
+		m.HTTPConfigs = append(m.HTTPConfigs, monitor.CreateHTTPConfigInput{
+			Scheme:      c.Scheme,
+			Path:        c.Path,
+			Method:      c.Method,
+			IsEnabled:   c.IsEnabled,
+			Interval:    c.Interval,
+			Timeout:     c.Timeout,
+			MaxAttempts: c.MaxAttempts,
+			Keywords:    c.Keywords,
 		})
 	}
 
 	createdM, err := h.svc.Create(r.Context(), m)
 
 	if errors.Is(err, monitor.ErrMonitorExists) {
-		log.Info("monitor already exists", slog.String("url", req.MonitorURL))
+		log.Info("monitor already exists", slog.String("host", req.Host))
 		resp.WriteError(w, r, http.StatusConflict, "monitor already exists")
+		return
+	}
+	if errors.Is(err, monitor.ErrValidation) {
+		log.Info("invalid monitor input", sl.Err(err))
+		resp.WriteError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err != nil {
@@ -97,9 +127,9 @@ func (h *MonitorHandler) Save(w http.ResponseWriter, r *http.Request) {
 	log.Info("monitor added",
 		slog.String("id", createdM.ID.String()),
 		slog.String("name", createdM.Name),
-		slog.String("url", createdM.URL),
+		slog.String("host", createdM.Host.String()),
 	)
 
 	render.Status(r, http.StatusCreated)
-	render.JSON(w, r, SaveResponse{resp.OK(), createdM})
+	render.JSON(w, r, SaveResponse{resp.OK(), toMonitorView(createdM)})
 }

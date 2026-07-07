@@ -25,13 +25,13 @@ func newStorage(t *testing.T) *sqlite.Storage {
 	return st
 }
 
-func newMonitor(t *testing.T, url string) monitor.Monitor {
+func newMonitor(t *testing.T, host string) monitor.Monitor {
 	t.Helper()
 	m, err := monitor.New(monitor.CreateMonitorInput{
 		Name: "seed",
-		URL:  url,
-		CheckConfigs: []monitor.CreateHTTPConfigInput{
-			{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3, DoErrorScreenshot: true, Keywords: []string{"ok", "ready"}},
+		Host: host,
+		HTTPConfigs: []monitor.CreateHTTPConfigInput{
+			{Scheme: "https", Path: "/health", Method: "GET", Interval: 60, Timeout: 5, MaxAttempts: 3, Keywords: []string{"ok", "ready"}},
 		},
 	})
 	if err != nil {
@@ -43,7 +43,7 @@ func newMonitor(t *testing.T, url string) monitor.Monitor {
 func TestStorage_CreateGet_RoundTrip(t *testing.T) {
 	st := newStorage(t)
 	ctx := context.Background()
-	m := newMonitor(t, "https://seed.example")
+	m := newMonitor(t, "seed.example")
 
 	if err := st.CreateMonitor(ctx, m); err != nil {
 		t.Fatalf("CreateMonitor: %v", err)
@@ -61,7 +61,7 @@ func TestStorage_CreateGet_RoundTrip(t *testing.T) {
 func TestStorage_Delete_ThenGet(t *testing.T) {
 	st := newStorage(t)
 	ctx := context.Background()
-	m := newMonitor(t, "https://del.example")
+	m := newMonitor(t, "del.example")
 	if err := st.CreateMonitor(ctx, m); err != nil {
 		t.Fatalf("CreateMonitor: %v", err)
 	}
@@ -78,27 +78,31 @@ func TestStorage_Delete_ThenGet(t *testing.T) {
 func TestStorage_Update_PartialKeepsOthers(t *testing.T) {
 	st := newStorage(t)
 	ctx := context.Background()
-	m := newMonitor(t, "https://upd.example")
+	m := newMonitor(t, "upd.example")
 	if err := st.CreateMonitor(ctx, m); err != nil {
 		t.Fatalf("CreateMonitor: %v", err)
 	}
 
 	newName := "renamed"
-	updated, err := st.UpdateMonitor(ctx, m.ID, monitor.UpdateMonitorInput{Name: &newName})
-	if err != nil {
+	if err := st.UpdateMonitor(ctx, m.ID, monitor.UpdateMonitorInput{Name: &newName}); err != nil {
 		t.Fatalf("UpdateMonitor: %v", err)
+	}
+
+	updated, err := st.GetMonitor(ctx, m.ID)
+	if err != nil {
+		t.Fatalf("GetMonitor: %v", err)
 	}
 	if updated.Name != newName {
 		t.Errorf("Name = %q, want %q", updated.Name, newName)
 	}
-	if updated.URL != m.URL {
-		t.Errorf("URL changed: %q, want %q", updated.URL, m.URL)
+	if !updated.Host.Equals(m.Host) {
+		t.Errorf("Host changed: %q, want %q", updated.Host.String(), m.Host.String())
 	}
 	if updated.Status != m.Status {
 		t.Errorf("Status changed: %q, want %q", updated.Status, m.Status)
 	}
-	if !reflect.DeepEqual(updated.CheckConfigs, m.CheckConfigs) {
-		t.Errorf("CheckConfigs changed:\n want: %+v\n got:  %+v", m.CheckConfigs, updated.CheckConfigs)
+	if !reflect.DeepEqual(updated.HTTPConfigs, m.HTTPConfigs) {
+		t.Errorf("HTTPConfigs changed:\n want: %+v\n got:  %+v", m.HTTPConfigs, updated.HTTPConfigs)
 	}
 }
 
@@ -111,7 +115,7 @@ func TestStorage_NotFound(t *testing.T) {
 	if _, err := st.GetMonitor(ctx, id); !errors.Is(err, monitor.ErrMonitorNotFound) {
 		t.Errorf("Get: err = %v, want %v", err, monitor.ErrMonitorNotFound)
 	}
-	if _, err := st.UpdateMonitor(ctx, id, monitor.UpdateMonitorInput{Name: &name}); !errors.Is(err, monitor.ErrMonitorNotFound) {
+	if err := st.UpdateMonitor(ctx, id, monitor.UpdateMonitorInput{Name: &name}); !errors.Is(err, monitor.ErrMonitorNotFound) {
 		t.Errorf("Update: err = %v, want %v", err, monitor.ErrMonitorNotFound)
 	}
 	if err := st.DeleteMonitor(ctx, id); !errors.Is(err, monitor.ErrMonitorNotFound) {
@@ -131,10 +135,10 @@ func TestStorage_List(t *testing.T) {
 		t.Errorf("empty store: len = %d, want 0", len(got))
 	}
 
-	if err := st.CreateMonitor(ctx, newMonitor(t, "https://a.example")); err != nil {
+	if err := st.CreateMonitor(ctx, newMonitor(t, "a.example")); err != nil {
 		t.Fatalf("CreateMonitor a: %v", err)
 	}
-	if err := st.CreateMonitor(ctx, newMonitor(t, "https://b.example")); err != nil {
+	if err := st.CreateMonitor(ctx, newMonitor(t, "b.example")); err != nil {
 		t.Fatalf("CreateMonitor b: %v", err)
 	}
 
@@ -147,17 +151,17 @@ func TestStorage_List(t *testing.T) {
 	}
 }
 
-func TestStorage_Create_DuplicateURL(t *testing.T) {
+func TestStorage_Create_DuplicateHost(t *testing.T) {
 	st := newStorage(t)
 	ctx := context.Background()
 
-	if err := st.CreateMonitor(ctx, newMonitor(t, "https://dup.example")); err != nil {
+	if err := st.CreateMonitor(ctx, newMonitor(t, "dup.example")); err != nil {
 		t.Fatalf("first CreateMonitor: %v", err)
 	}
-	// Second monitor: a fresh ID (New generates one) but the same URL, which
-	// violates the UNIQUE(url) constraint.
-	err := st.CreateMonitor(ctx, newMonitor(t, "https://dup.example"))
+	// Second monitor: a fresh ID (New generates one) but the same host, which
+	// violates the UNIQUE(host) constraint.
+	err := st.CreateMonitor(ctx, newMonitor(t, "dup.example"))
 	if !errors.Is(err, monitor.ErrMonitorExists) {
-		t.Errorf("duplicate URL: err = %v, want %v", err, monitor.ErrMonitorExists)
+		t.Errorf("duplicate host: err = %v, want %v", err, monitor.ErrMonitorExists)
 	}
 }

@@ -164,6 +164,13 @@ func (h Host) Equals(o Host) bool {
 	return h.value == o.value
 }
 
+func (h Host) Authority() string {
+	if strings.Contains(h.value, ":") { // bare IPv6
+		return "[" + h.value + "]"
+	}
+	return h.value
+}
+
 type Path struct {
 	value string
 }

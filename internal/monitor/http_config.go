@@ -68,7 +68,12 @@ func NewHTTPConfig(monitorID uuid.UUID, inConfig CreateHTTPConfigInput) (HTTPCon
 	if err != nil {
 		return HTTPConfig{}, err
 	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return HTTPConfig{}, err
+	}
 	return HTTPConfig{
+		ID:          id,
 		MonitorID:   monitorID,
 		Scheme:      scheme,
 		Path:        path,

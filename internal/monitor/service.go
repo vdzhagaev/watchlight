@@ -29,7 +29,15 @@ func (svc *Service) Create(ctx context.Context, in CreateMonitorInput) (Monitor,
 	return m, nil
 }
 
-func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorInput) (Monitor, error) {
+func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorInput) error {
+	if in.Host != nil {
+		host, err := NewHost(*in.Host)
+		if err != nil {
+			return err
+		}
+		normalized := host.String()
+		in.Host = &normalized
+	}
 	return svc.repo.UpdateMonitor(ctx, id, in)
 }
 

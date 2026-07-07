@@ -11,13 +11,18 @@ import (
 // Domain-level tests: they exercise monitor.New() directly — pure construction
 // and validation logic, no storage involved.
 
+func httpConfig() monitor.CreateHTTPConfigInput {
+	return monitor.CreateHTTPConfigInput{
+		Scheme: "https", Path: "/health", Method: "GET",
+		Interval: 60, Timeout: 5, MaxAttempts: 3,
+	}
+}
+
 func TestNew_Success(t *testing.T) {
 	in := monitor.CreateMonitorInput{
-		Name: "Example",
-		Host: "example.com",
-		CheckConfigs: []monitor.CreateHTTPConfigInput{
-			{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3},
-		},
+		Name:        "Example",
+		Host:        "example.com",
+		HTTPConfigs: []monitor.CreateHTTPConfigInput{httpConfig()},
 	}
 
 	got, err := monitor.New(in)
@@ -33,14 +38,34 @@ func TestNew_Success(t *testing.T) {
 	if got.Name != in.Name {
 		t.Errorf("Name = %q, want %q", got.Name, in.Name)
 	}
-	if got.URL != in.URL {
-		t.Errorf("URL = %q, want %q", got.URL, in.URL)
+	if got.Host.String() != in.Host {
+		t.Errorf("Host = %q, want %q", got.Host.String(), in.Host)
 	}
-	if len(got.CheckConfigs) != 1 {
-		t.Fatalf("len(CheckConfigs) = %d, want 1", len(got.CheckConfigs))
+	if len(got.HTTPConfigs) != 1 {
+		t.Fatalf("len(HTTPConfigs) = %d, want 1", len(got.HTTPConfigs))
 	}
-	if !got.CheckConfigs[0].IsEnabled {
+	if !got.HTTPConfigs[0].IsEnabled {
 		t.Error("IsEnabled default should be true")
+	}
+}
+
+// Every monitor gets an intrinsic ping config even when none is supplied.
+func TestNew_DefaultPingConfig(t *testing.T) {
+	got, err := monitor.New(monitor.CreateMonitorInput{Name: "x", Host: "x.com"})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if got.PingConfig.ID == uuid.Nil {
+		t.Error("default ping config should have a non-nil ID")
+	}
+	if got.PingConfig.MonitorID != got.ID {
+		t.Errorf("ping MonitorID = %v, want %v", got.PingConfig.MonitorID, got.ID)
+	}
+	if got.PingConfig.Port != monitor.DefaultPingPort {
+		t.Errorf("ping Port = %d, want %d", got.PingConfig.Port, monitor.DefaultPingPort)
+	}
+	if !got.PingConfig.IsEnabled {
+		t.Error("default ping should be enabled")
 	}
 }
 
@@ -50,9 +75,9 @@ func TestNew_Validation(t *testing.T) {
 		input   monitor.CreateMonitorInput
 		wantErr error
 	}{
-		{"empty name", monitor.CreateMonitorInput{URL: "http://x.com"}, monitor.ErrMonitorEmptyName},
-		{"empty url", monitor.CreateMonitorInput{Name: "x"}, monitor.ErrMonitorEmptyHost},
-		{"no check configs", monitor.CreateMonitorInput{Name: "x", URL: "http://x.com"}, monitor.ErrMonitorNoChecks},
+		{"empty name", monitor.CreateMonitorInput{Host: "x.com"}, monitor.ErrMonitorEmptyName},
+		{"empty host", monitor.CreateMonitorInput{Name: "x"}, monitor.ErrMonitorEmptyHost},
+		{"invalid host", monitor.CreateMonitorInput{Name: "x", Host: "http://x.com/y"}, monitor.ErrValidation},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -77,47 +102,42 @@ func TestNew_IsEnabledDefault(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			cfg := httpConfig()
+			cfg.IsEnabled = tt.isEnabled
 			got, err := monitor.New(monitor.CreateMonitorInput{
-				Name: "x",
-				URL:  "https://x.com",
-				CheckConfigs: []monitor.CreateHTTPConfigInput{
-					{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3, IsEnabled: tt.isEnabled},
-				},
+				Name: "x", Host: "x.com",
+				HTTPConfigs: []monitor.CreateHTTPConfigInput{cfg},
 			})
 			if err != nil {
 				t.Fatalf("New() error = %v", err)
 			}
-			if got.CheckConfigs[0].IsEnabled != tt.want {
-				t.Errorf("IsEnabled = %v, want %v", got.CheckConfigs[0].IsEnabled, tt.want)
+			if got.HTTPConfigs[0].IsEnabled != tt.want {
+				t.Errorf("IsEnabled = %v, want %v", got.HTTPConfigs[0].IsEnabled, tt.want)
 			}
 		})
 	}
 }
 
-func TestNew_CheckConfigValidation(t *testing.T) {
-	valid := func() monitor.CreateMonitorInput {
-		return monitor.CreateMonitorInput{
-			Name: "x",
-			URL:  "https://x.com",
-			CheckConfigs: []monitor.CreateHTTPConfigInput{
-				{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3},
-			},
-		}
-	}
+func TestNew_HTTPConfigValidation(t *testing.T) {
 	tests := []struct {
 		name    string
-		mutate  func(in *monitor.CreateMonitorInput)
+		mutate  func(c *monitor.CreateHTTPConfigInput)
 		wantErr error
 	}{
-		{"interval below minimum", func(in *monitor.CreateMonitorInput) { in.CheckConfigs[0].CheckInterval = 5 }, monitor.ErrCheckIntervalTooSmall},
-		{"timeout below minimum", func(in *monitor.CreateMonitorInput) { in.CheckConfigs[0].CheckTimeout = 1 }, monitor.ErrCheckTimeoutTooSmall},
-		{"maxAttempts below minimum", func(in *monitor.CreateMonitorInput) { in.CheckConfigs[0].MaxAttempts = -1 }, monitor.ErrMaxAttemptsTooSmall},
+		{"interval below minimum", func(c *monitor.CreateHTTPConfigInput) { c.Interval = 5 }, monitor.ErrCheckIntervalTooSmall},
+		{"timeout below minimum", func(c *monitor.CreateHTTPConfigInput) { c.Timeout = 1 }, monitor.ErrCheckTimeoutTooSmall},
+		{"maxAttempts below minimum", func(c *monitor.CreateHTTPConfigInput) { c.MaxAttempts = -1 }, monitor.ErrMaxAttemptsTooSmall},
+		{"invalid scheme", func(c *monitor.CreateHTTPConfigInput) { c.Scheme = "ftp" }, monitor.ErrValidation},
+		{"invalid method", func(c *monitor.CreateHTTPConfigInput) { c.Method = "PUT" }, monitor.ErrValidation},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			in := valid()
-			tt.mutate(&in)
-			_, err := monitor.New(in)
+			cfg := httpConfig()
+			tt.mutate(&cfg)
+			_, err := monitor.New(monitor.CreateMonitorInput{
+				Name: "x", Host: "x.com",
+				HTTPConfigs: []monitor.CreateHTTPConfigInput{cfg},
+			})
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("err = %v, want %v", err, tt.wantErr)
 			}
@@ -125,49 +145,51 @@ func TestNew_CheckConfigValidation(t *testing.T) {
 	}
 }
 
-func TestNew_CheckConfigDefaults(t *testing.T) {
+func TestNew_HTTPConfigDefaults(t *testing.T) {
 	got, err := monitor.New(monitor.CreateMonitorInput{
-		Name: "x",
-		URL:  "https://x.com",
-		CheckConfigs: []monitor.CreateHTTPConfigInput{
-			{CheckType: monitor.CheckHTTP}, // all int fields zero -> defaults applied
+		Name: "x", Host: "x.com",
+		HTTPConfigs: []monitor.CreateHTTPConfigInput{
+			{Scheme: "https", Method: "GET"}, // int fields zero -> defaults applied
 		},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	cfg := got.CheckConfigs[0]
-	if cfg.CheckInterval != monitor.DefaultCheckInterval {
-		t.Errorf("CheckInterval = %d, want %d", cfg.CheckInterval, monitor.DefaultCheckInterval)
+	cfg := got.HTTPConfigs[0]
+	if cfg.Interval.Seconds() != monitor.DefaultCheckInterval {
+		t.Errorf("Interval = %d, want %d", cfg.Interval.Seconds(), monitor.DefaultCheckInterval)
 	}
-	if cfg.CheckTimeout != monitor.DefaultCheckTimeout {
-		t.Errorf("CheckTimeout = %d, want %d", cfg.CheckTimeout, monitor.DefaultCheckTimeout)
+	if cfg.Timeout.Seconds() != monitor.DefaultCheckTimeout {
+		t.Errorf("Timeout = %d, want %d", cfg.Timeout.Seconds(), monitor.DefaultCheckTimeout)
 	}
-	if cfg.MaxAttempts != monitor.DefaultMaxAttempts {
-		t.Errorf("MaxAttempts = %d, want %d", cfg.MaxAttempts, monitor.DefaultMaxAttempts)
+	if cfg.MaxAttempts.Count() != monitor.DefaultMaxAttempts {
+		t.Errorf("MaxAttempts = %d, want %d", cfg.MaxAttempts.Count(), monitor.DefaultMaxAttempts)
+	}
+	// Path defaults to "/" when omitted.
+	if cfg.Path.String() != "/" {
+		t.Errorf("Path = %q, want %q", cfg.Path.String(), "/")
 	}
 }
 
-func TestNew_MultipleChecks(t *testing.T) {
+func TestNew_MultipleHTTPChecks(t *testing.T) {
 	in := monitor.CreateMonitorInput{
-		Name: "multi",
-		URL:  "https://multi.example",
-		CheckConfigs: []monitor.CreateHTTPConfigInput{
-			{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3},
-			{CheckType: monitor.CheckPing, CheckInterval: 30, CheckTimeout: 2, MaxAttempts: 2},
-			{CheckType: monitor.CheckHeadless, CheckInterval: 300, CheckTimeout: 20, MaxAttempts: 1},
+		Name: "multi", Host: "multi.example",
+		HTTPConfigs: []monitor.CreateHTTPConfigInput{
+			{Scheme: "https", Path: "/a", Method: "GET", Interval: 60, Timeout: 5, MaxAttempts: 3},
+			{Scheme: "https", Path: "/b", Method: "HEAD", Interval: 30, Timeout: 2, MaxAttempts: 2},
+			{Scheme: "http", Path: "/c", Method: "GET", Interval: 300, Timeout: 20, MaxAttempts: 1},
 		},
 	}
 	got, err := monitor.New(in)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	if len(got.CheckConfigs) != 3 {
-		t.Fatalf("len(CheckConfigs) = %d, want 3", len(got.CheckConfigs))
+	if len(got.HTTPConfigs) != 3 {
+		t.Fatalf("len(HTTPConfigs) = %d, want 3", len(got.HTTPConfigs))
 	}
 
 	seen := make(map[uuid.UUID]bool)
-	for i, cfg := range got.CheckConfigs {
+	for i, cfg := range got.HTTPConfigs {
 		if cfg.ID == uuid.Nil {
 			t.Errorf("config[%d].ID is nil", i)
 		}
@@ -179,8 +201,8 @@ func TestNew_MultipleChecks(t *testing.T) {
 		if cfg.MonitorID != got.ID {
 			t.Errorf("config[%d].MonitorID = %v, want %v", i, cfg.MonitorID, got.ID)
 		}
-		if cfg.CheckType != in.CheckConfigs[i].CheckType {
-			t.Errorf("config[%d].CheckType = %q, want %q (order changed)", i, cfg.CheckType, in.CheckConfigs[i].CheckType)
+		if cfg.Path.String() != in.HTTPConfigs[i].Path {
+			t.Errorf("config[%d].Path = %q, want %q (order changed)", i, cfg.Path.String(), in.HTTPConfigs[i].Path)
 		}
 	}
 }

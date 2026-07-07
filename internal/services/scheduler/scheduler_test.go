@@ -96,14 +96,26 @@ func (h *fakeHandler) HandleCheckResult(ctx context.Context, r monitor.CheckResu
 // --- helpers -------------------------------------------------------------
 
 func runnable(ct monitor.CheckType, interval time.Duration) monitor.CheckJob {
-	return monitor.CheckJob{
+	if ct == monitor.CheckPing {
+		return monitor.NewPingJob(monitor.CreatePingJobInput{
+			MonitorID: uuid.New(),
+			ConfigID:  uuid.New(),
+			Host:      monitor.ReconstructHost("example.test"),
+			Port:      443,
+			Interval:  interval,
+			Timeout:   time.Second,
+		})
+	}
+	return monitor.NewHTTPJob(monitor.CreateHTTPJobInput{
 		MonitorID: uuid.New(),
 		ConfigID:  uuid.New(),
-		Target:    "http://example.test",
-		CheckType: ct,
+		Scheme:    monitor.SchemeHTTP,
+		Host:      monitor.ReconstructHost("example.test"),
+		Path:      monitor.ReconstructPath("/"),
+		Method:    monitor.MethodGET,
 		Interval:  interval,
 		Timeout:   time.Second,
-	}
+	})
 }
 
 func newTestScheduler(g ConfigsGetter, h ResultHandler, checkers map[monitor.CheckType]checker.Checker) *Scheduler {
@@ -201,8 +213,8 @@ func TestScheduler_DispatchesAndRecordsSuccess(t *testing.T) {
 	startAndCleanup(t, s)
 
 	r := recvResult(t, h, 2*time.Second)
-	assert.Equal(t, rc.ConfigID, r.ConfigID)
-	assert.Equal(t, rc.MonitorID, r.MonitorID)
+	assert.Equal(t, rc.Base().ConfigID, r.ConfigID)
+	assert.Equal(t, rc.Base().MonitorID, r.MonitorID)
 	assert.Equal(t, 200, r.StatusCode)
 	assert.Equal(t, 5*time.Millisecond, r.ResponseTime)
 }
@@ -260,15 +272,15 @@ func TestScheduler_RunsAllEnabledConfigs(t *testing.T) {
 			t.Fatalf("expected both configs to run, saw %d", len(seen))
 		}
 	}
-	assert.True(t, seen[rc1.ConfigID])
-	assert.True(t, seen[rc2.ConfigID])
+	assert.True(t, seen[rc1.Base().ConfigID])
+	assert.True(t, seen[rc2.Base().ConfigID])
 }
 
 func TestScheduler_UnknownCheckerType_RecordsFailure(t *testing.T) {
-	rc := runnable(monitor.CheckHeadless, 50*time.Millisecond)
+	rc := runnable(monitor.CheckHTTP, 50*time.Millisecond)
 	h := newFakeHandler()
 
-	// No checker registered for CheckHeadless.
+	// No checker registered for this job's type.
 	s := newTestScheduler(
 		&fakeGetter{checks: []monitor.CheckJob{rc}},
 		h,

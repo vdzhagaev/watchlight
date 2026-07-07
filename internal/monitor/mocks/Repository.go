@@ -64,7 +64,7 @@ type MockRepository_CreateMonitor_Call struct {
 // CreateMonitor is a helper method to define mock.On call
 //   - ctx context.Context
 //   - m monitor.Monitor
-func (_e *MockRepository_Expecter) CreateMonitor(ctx interface{}, m interface{}) *MockRepository_CreateMonitor_Call {
+func (_e *MockRepository_Expecter) CreateMonitor(ctx any, m any) *MockRepository_CreateMonitor_Call {
 	return &MockRepository_CreateMonitor_Call{Call: _e.mock.On("CreateMonitor", ctx, m)}
 }
 
@@ -121,7 +121,7 @@ type MockRepository_DeleteMonitor_Call struct {
 // DeleteMonitor is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id uuid.UUID
-func (_e *MockRepository_Expecter) DeleteMonitor(ctx interface{}, id interface{}) *MockRepository_DeleteMonitor_Call {
+func (_e *MockRepository_Expecter) DeleteMonitor(ctx any, id any) *MockRepository_DeleteMonitor_Call {
 	return &MockRepository_DeleteMonitor_Call{Call: _e.mock.On("DeleteMonitor", ctx, id)}
 }
 
@@ -187,7 +187,7 @@ type MockRepository_GetMonitor_Call struct {
 // GetMonitor is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id uuid.UUID
-func (_e *MockRepository_Expecter) GetMonitor(ctx interface{}, id interface{}) *MockRepository_GetMonitor_Call {
+func (_e *MockRepository_Expecter) GetMonitor(ctx any, id any) *MockRepository_GetMonitor_Call {
 	return &MockRepository_GetMonitor_Call{Call: _e.mock.On("GetMonitor", ctx, id)}
 }
 
@@ -254,7 +254,7 @@ type MockRepository_GetMonitorList_Call struct {
 
 // GetMonitorList is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockRepository_Expecter) GetMonitorList(ctx interface{}) *MockRepository_GetMonitorList_Call {
+func (_e *MockRepository_Expecter) GetMonitorList(ctx any) *MockRepository_GetMonitorList_Call {
 	return &MockRepository_GetMonitorList_Call{Call: _e.mock.On("GetMonitorList", ctx)}
 }
 
@@ -282,7 +282,7 @@ func (_c *MockRepository_GetMonitorList_Call) RunAndReturn(run func(ctx context.
 }
 
 // SaveCheckResult provides a mock function for the type MockRepository
-func (_mock *MockRepository) SaveCheckResult(ctx context.Context, r monitor.MonitorCheckResult) error {
+func (_mock *MockRepository) SaveCheckResult(ctx context.Context, r monitor.CheckResult) error {
 	ret := _mock.Called(ctx, r)
 
 	if len(ret) == 0 {
@@ -290,7 +290,7 @@ func (_mock *MockRepository) SaveCheckResult(ctx context.Context, r monitor.Moni
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, monitor.MonitorCheckResult) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, monitor.CheckResult) error); ok {
 		r0 = returnFunc(ctx, r)
 	} else {
 		r0 = ret.Error(0)
@@ -305,20 +305,20 @@ type MockRepository_SaveCheckResult_Call struct {
 
 // SaveCheckResult is a helper method to define mock.On call
 //   - ctx context.Context
-//   - r monitor.MonitorCheckResult
-func (_e *MockRepository_Expecter) SaveCheckResult(ctx interface{}, r interface{}) *MockRepository_SaveCheckResult_Call {
+//   - r monitor.CheckResult
+func (_e *MockRepository_Expecter) SaveCheckResult(ctx any, r any) *MockRepository_SaveCheckResult_Call {
 	return &MockRepository_SaveCheckResult_Call{Call: _e.mock.On("SaveCheckResult", ctx, r)}
 }
 
-func (_c *MockRepository_SaveCheckResult_Call) Run(run func(ctx context.Context, r monitor.MonitorCheckResult)) *MockRepository_SaveCheckResult_Call {
+func (_c *MockRepository_SaveCheckResult_Call) Run(run func(ctx context.Context, r monitor.CheckResult)) *MockRepository_SaveCheckResult_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 monitor.MonitorCheckResult
+		var arg1 monitor.CheckResult
 		if args[1] != nil {
-			arg1 = args[1].(monitor.MonitorCheckResult)
+			arg1 = args[1].(monitor.CheckResult)
 		}
 		run(
 			arg0,
@@ -333,35 +333,26 @@ func (_c *MockRepository_SaveCheckResult_Call) Return(err error) *MockRepository
 	return _c
 }
 
-func (_c *MockRepository_SaveCheckResult_Call) RunAndReturn(run func(ctx context.Context, r monitor.MonitorCheckResult) error) *MockRepository_SaveCheckResult_Call {
+func (_c *MockRepository_SaveCheckResult_Call) RunAndReturn(run func(ctx context.Context, r monitor.CheckResult) error) *MockRepository_SaveCheckResult_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateMonitor provides a mock function for the type MockRepository
-func (_mock *MockRepository) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+func (_mock *MockRepository) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) error {
 	ret := _mock.Called(ctx, id, in)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateMonitor")
 	}
 
-	var r0 monitor.Monitor
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, monitor.UpdateMonitorInput) (monitor.Monitor, error)); ok {
-		return returnFunc(ctx, id, in)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, monitor.UpdateMonitorInput) monitor.Monitor); ok {
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, monitor.UpdateMonitorInput) error); ok {
 		r0 = returnFunc(ctx, id, in)
 	} else {
-		r0 = ret.Get(0).(monitor.Monitor)
+		r0 = ret.Error(0)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID, monitor.UpdateMonitorInput) error); ok {
-		r1 = returnFunc(ctx, id, in)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
+	return r0
 }
 
 // MockRepository_UpdateMonitor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateMonitor'
@@ -373,7 +364,7 @@ type MockRepository_UpdateMonitor_Call struct {
 //   - ctx context.Context
 //   - id uuid.UUID
 //   - in monitor.UpdateMonitorInput
-func (_e *MockRepository_Expecter) UpdateMonitor(ctx interface{}, id interface{}, in interface{}) *MockRepository_UpdateMonitor_Call {
+func (_e *MockRepository_Expecter) UpdateMonitor(ctx any, id any, in any) *MockRepository_UpdateMonitor_Call {
 	return &MockRepository_UpdateMonitor_Call{Call: _e.mock.On("UpdateMonitor", ctx, id, in)}
 }
 
@@ -400,12 +391,12 @@ func (_c *MockRepository_UpdateMonitor_Call) Run(run func(ctx context.Context, i
 	return _c
 }
 
-func (_c *MockRepository_UpdateMonitor_Call) Return(monitor1 monitor.Monitor, err error) *MockRepository_UpdateMonitor_Call {
-	_c.Call.Return(monitor1, err)
+func (_c *MockRepository_UpdateMonitor_Call) Return(err error) *MockRepository_UpdateMonitor_Call {
+	_c.Call.Return(err)
 	return _c
 }
 
-func (_c *MockRepository_UpdateMonitor_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) (monitor.Monitor, error)) *MockRepository_UpdateMonitor_Call {
+func (_c *MockRepository_UpdateMonitor_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) error) *MockRepository_UpdateMonitor_Call {
 	_c.Call.Return(run)
 	return _c
 }

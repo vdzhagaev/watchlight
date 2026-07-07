@@ -28,7 +28,7 @@ func (h HTTPChecker) Check(ctx context.Context, command CheckRequest) (CheckResu
 		method = http.MethodGet
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, command.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, method, command.Target, nil)
 	if err != nil {
 		return CheckResult{}, fmt.Errorf("%s: failed building request: %w", op, err)
 	}
