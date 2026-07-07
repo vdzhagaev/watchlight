@@ -7,6 +7,7 @@ vendor/
 *.log
 
 storage/*
+!storage/.gitkeep
 
 # build artifacts
 *.exe
