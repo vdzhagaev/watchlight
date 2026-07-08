@@ -107,7 +107,7 @@ within `shutdown_timeout`.
 created or changed while the scheduler is running are not picked up until
 restart. Addressed in v0.6.
 
-### v0.5 — Monitor remodel: host + per-path checks [next]
+### v0.5 — Monitor remodel: host + per-path checks [done]
 
 Reframe a monitor as a host rather than a single URL, so the check model
 matches reality: host-level reachability and per-path HTTP checks are
@@ -134,7 +134,7 @@ different things.
 given per-path HTTP checks; the aggregate operations enforce the invariants
 above (under tests); storage round-trips the new shape.
 
-### v0.6 — Live monitoring [planned]
+### v0.6 — Live monitoring [next]
 
 Make monitoring stateful and self-updating: the scheduler keeps up with
 configuration changes, and each monitor carries a derived status.
