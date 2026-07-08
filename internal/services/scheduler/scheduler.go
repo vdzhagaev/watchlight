@@ -18,10 +18,10 @@ import (
 const defaultWorkers = 10
 
 type State struct {
-	runnableCheck *monitor.RunnableCheck
-	nextDue       time.Time
-	inFlight      bool
-	index         int
+	checkJob monitor.CheckJob
+	nextDue  time.Time
+	inFlight bool
+	index    int
 }
 
 type Event struct {
@@ -31,7 +31,7 @@ type Event struct {
 
 type Scheduler struct {
 	wg             sync.WaitGroup
-	jobs           chan monitor.RunnableCheck
+	jobs           chan monitor.CheckJob
 	results        chan monitor.CheckResultInput
 	events         chan Event
 	done           chan struct{}
@@ -57,7 +57,7 @@ type Params struct {
 }
 
 type ConfigsGetter interface {
-	ListEnabledCheckConfigs(context.Context) ([]monitor.RunnableCheck, error)
+	ListEnabledCheckConfigs(context.Context) ([]monitor.CheckJob, error)
 }
 
 type ResultHandler interface {
@@ -72,7 +72,7 @@ func New(p Params) *Scheduler {
 		p.WriteTimeout = 5 * time.Second
 	}
 	return &Scheduler{
-		jobs:         make(chan monitor.RunnableCheck),
+		jobs:         make(chan monitor.CheckJob),
 		results:      make(chan monitor.CheckResultInput, p.Workers),
 		events:       make(chan Event),
 		done:         make(chan struct{}),
@@ -165,7 +165,7 @@ func (s *Scheduler) dispatch(ctx context.Context) {
 		state := heap.Pop(&s.heap).(*State)
 		state.inFlight = true
 		select {
-		case s.jobs <- *state.runnableCheck:
+		case s.jobs <- state.checkJob:
 		case <-ctx.Done():
 			return
 		}
@@ -178,7 +178,7 @@ func (s *Scheduler) applyEvent(ev Event) {
 		return
 	}
 	state.inFlight = false
-	state.nextDue = ev.CompletedAt.Add(state.runnableCheck.Interval)
+	state.nextDue = ev.CompletedAt.Add(state.checkJob.Base().Interval)
 	heap.Push(&s.heap, state)
 }
 
@@ -190,13 +190,13 @@ func (s *Scheduler) buildEntries(ctx context.Context) (map[uuid.UUID]*State, err
 	configs := make(map[uuid.UUID]*State)
 
 	for i, c := range cfgs {
-		jitterWindow := int64(min(c.Interval, 30*time.Second))
+		jitterWindow := int64(min(c.Base().Interval, 30*time.Second))
 		nextDue := time.Now().Add(time.Duration(rand.Int63n(jitterWindow)))
-		configs[c.ConfigID] = &State{
-			runnableCheck: &c,
-			nextDue:       nextDue,
-			inFlight:      false,
-			index:         i,
+		configs[c.Base().ConfigID] = &State{
+			checkJob: c,
+			nextDue:  nextDue,
+			inFlight: false,
+			index:    i,
 		}
 	}
 
@@ -218,25 +218,33 @@ func (s *Scheduler) sleepUntilNext() time.Duration {
 func (s *Scheduler) worker(ctx context.Context) {
 	defer s.wg.Done()
 	for rc := range s.jobs {
-		c, ok := s.checkers[rc.CheckType]
+		c, ok := s.checkers[rc.CheckType()]
 
 		result := monitor.CheckResultInput{
-			MonitorID: rc.MonitorID,
-			ConfigID:  rc.ConfigID,
+			MonitorID: rc.Base().MonitorID,
+			ConfigID:  rc.Base().ConfigID,
+			CheckType: rc.CheckType(),
 		}
 
 		if !ok {
 			result.CheckedAt = time.Now()
 			// TODO: Do SchedulerErrors and chage error type from string to `error`
-			result.Error = fmt.Errorf("Not available checker for this config: %s", rc.CheckType)
+			result.Error = fmt.Errorf("Not available checker for this config: %s", rc.CheckType())
 
 			s.results <- result
 			continue
 		}
+		var keywords []string
+		var method string
+		if hj, ok := rc.(monitor.HTTPJob); ok {
+			keywords = hj.Keywords
+			method = string(hj.Method)
+		}
 		res, err := c.Check(ctx, checker.CheckRequest{
-			URL:      rc.URL,
-			Timeout:  rc.Timeout,
-			Keywords: rc.Keywords,
+			Target:   rc.Target(),
+			Method:   method,
+			Timeout:  rc.Base().Timeout,
+			Keywords: keywords,
 		})
 		result.CheckedAt = time.Now()
 		if err != nil {

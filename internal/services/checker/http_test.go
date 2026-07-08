@@ -184,7 +184,8 @@ func TestHttpChecker(t *testing.T) {
 			defer srv.Close()
 
 			res, _ := HTTPChecker{}.Check(t.Context(), CheckRequest{
-				URL:      srv.URL,
+				Target:   srv.URL,
+				Method:   tc.want.method,
 				Timeout:  tc.reqTimeout,
 				Keywords: tc.reqKeywords,
 			})

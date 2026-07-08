@@ -16,14 +16,9 @@ import (
 )
 
 type UpdateRequest struct {
-	URL    *string                `json:"url,omitempty" validate:"omitempty,url"`
+	Host   *string                `json:"host,omitempty" validate:"omitempty,hostname_rfc1123|ip"`
 	Name   *string                `json:"name,omitempty"`
 	Status *monitor.MonitorStatus `json:"status,omitempty" validate:"omitempty,oneof=up down unknown"`
-}
-
-type UpdateResponse struct {
-	resp.Response
-	Monitor monitor.Monitor `json:"monitor"`
 }
 
 func (h *MonitorHandler) Patch(w http.ResponseWriter, r *http.Request) {
@@ -63,11 +58,11 @@ func (h *MonitorHandler) Patch(w http.ResponseWriter, r *http.Request) {
 
 	mUpdateIn := monitor.UpdateMonitorInput{
 		Name:   req.Name,
-		URL:    req.URL,
+		Host:   req.Host,
 		Status: req.Status,
 	}
 
-	updateM, err := h.svc.Update(r.Context(), id, mUpdateIn)
+	err = h.svc.Update(r.Context(), id, mUpdateIn)
 
 	if errors.Is(err, monitor.ErrMonitorNotFound) {
 		log.Info("monitor not found", slog.String("id", idStr))
@@ -79,17 +74,18 @@ func (h *MonitorHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		resp.WriteError(w, r, http.StatusConflict, "monitor already exists")
 		return
 	}
+	if errors.Is(err, monitor.ErrValidation) {
+		log.Info("invalid monitor input", sl.Err(err))
+		resp.WriteError(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		log.Error("failed to update monitor", sl.Err(err))
 		resp.WriteError(w, r, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	log.Info("monitor updated",
-		slog.String("id", updateM.ID.String()),
-		slog.String("name", updateM.Name),
-		slog.String("url", updateM.URL),
-	)
+	log.Info("monitor updated", slog.String("id", idStr))
 
-	render.JSON(w, r, UpdateResponse{resp.OK(), updateM})
+	w.WriteHeader(http.StatusNoContent)
 }

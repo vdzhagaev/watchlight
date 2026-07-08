@@ -39,6 +39,63 @@ func (_m *MockRepository) EXPECT() *MockRepository_Expecter {
 	return &MockRepository_Expecter{mock: &_m.Mock}
 }
 
+// AddHTTPConfig provides a mock function for the type MockRepository
+func (_mock *MockRepository) AddHTTPConfig(ctx context.Context, cfg monitor.HTTPConfig) error {
+	ret := _mock.Called(ctx, cfg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddHTTPConfig")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, monitor.HTTPConfig) error); ok {
+		r0 = returnFunc(ctx, cfg)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockRepository_AddHTTPConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddHTTPConfig'
+type MockRepository_AddHTTPConfig_Call struct {
+	*mock.Call
+}
+
+// AddHTTPConfig is a helper method to define mock.On call
+//   - ctx context.Context
+//   - cfg monitor.HTTPConfig
+func (_e *MockRepository_Expecter) AddHTTPConfig(ctx interface{}, cfg interface{}) *MockRepository_AddHTTPConfig_Call {
+	return &MockRepository_AddHTTPConfig_Call{Call: _e.mock.On("AddHTTPConfig", ctx, cfg)}
+}
+
+func (_c *MockRepository_AddHTTPConfig_Call) Run(run func(ctx context.Context, cfg monitor.HTTPConfig)) *MockRepository_AddHTTPConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 monitor.HTTPConfig
+		if args[1] != nil {
+			arg1 = args[1].(monitor.HTTPConfig)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRepository_AddHTTPConfig_Call) Return(err error) *MockRepository_AddHTTPConfig_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockRepository_AddHTTPConfig_Call) RunAndReturn(run func(ctx context.Context, cfg monitor.HTTPConfig) error) *MockRepository_AddHTTPConfig_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateMonitor provides a mock function for the type MockRepository
 func (_mock *MockRepository) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 	ret := _mock.Called(ctx, m)
@@ -281,8 +338,65 @@ func (_c *MockRepository_GetMonitorList_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
+// RemoveHTTPConfig provides a mock function for the type MockRepository
+func (_mock *MockRepository) RemoveHTTPConfig(ctx context.Context, configID uuid.UUID) error {
+	ret := _mock.Called(ctx, configID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveHTTPConfig")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
+		r0 = returnFunc(ctx, configID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockRepository_RemoveHTTPConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveHTTPConfig'
+type MockRepository_RemoveHTTPConfig_Call struct {
+	*mock.Call
+}
+
+// RemoveHTTPConfig is a helper method to define mock.On call
+//   - ctx context.Context
+//   - configID uuid.UUID
+func (_e *MockRepository_Expecter) RemoveHTTPConfig(ctx interface{}, configID interface{}) *MockRepository_RemoveHTTPConfig_Call {
+	return &MockRepository_RemoveHTTPConfig_Call{Call: _e.mock.On("RemoveHTTPConfig", ctx, configID)}
+}
+
+func (_c *MockRepository_RemoveHTTPConfig_Call) Run(run func(ctx context.Context, configID uuid.UUID)) *MockRepository_RemoveHTTPConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRepository_RemoveHTTPConfig_Call) Return(err error) *MockRepository_RemoveHTTPConfig_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockRepository_RemoveHTTPConfig_Call) RunAndReturn(run func(ctx context.Context, configID uuid.UUID) error) *MockRepository_RemoveHTTPConfig_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SaveCheckResult provides a mock function for the type MockRepository
-func (_mock *MockRepository) SaveCheckResult(ctx context.Context, r monitor.MonitorCheckResult) error {
+func (_mock *MockRepository) SaveCheckResult(ctx context.Context, r monitor.CheckResult) error {
 	ret := _mock.Called(ctx, r)
 
 	if len(ret) == 0 {
@@ -290,7 +404,7 @@ func (_mock *MockRepository) SaveCheckResult(ctx context.Context, r monitor.Moni
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, monitor.MonitorCheckResult) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, monitor.CheckResult) error); ok {
 		r0 = returnFunc(ctx, r)
 	} else {
 		r0 = ret.Error(0)
@@ -305,20 +419,20 @@ type MockRepository_SaveCheckResult_Call struct {
 
 // SaveCheckResult is a helper method to define mock.On call
 //   - ctx context.Context
-//   - r monitor.MonitorCheckResult
+//   - r monitor.CheckResult
 func (_e *MockRepository_Expecter) SaveCheckResult(ctx interface{}, r interface{}) *MockRepository_SaveCheckResult_Call {
 	return &MockRepository_SaveCheckResult_Call{Call: _e.mock.On("SaveCheckResult", ctx, r)}
 }
 
-func (_c *MockRepository_SaveCheckResult_Call) Run(run func(ctx context.Context, r monitor.MonitorCheckResult)) *MockRepository_SaveCheckResult_Call {
+func (_c *MockRepository_SaveCheckResult_Call) Run(run func(ctx context.Context, r monitor.CheckResult)) *MockRepository_SaveCheckResult_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 monitor.MonitorCheckResult
+		var arg1 monitor.CheckResult
 		if args[1] != nil {
-			arg1 = args[1].(monitor.MonitorCheckResult)
+			arg1 = args[1].(monitor.CheckResult)
 		}
 		run(
 			arg0,
@@ -333,35 +447,83 @@ func (_c *MockRepository_SaveCheckResult_Call) Return(err error) *MockRepository
 	return _c
 }
 
-func (_c *MockRepository_SaveCheckResult_Call) RunAndReturn(run func(ctx context.Context, r monitor.MonitorCheckResult) error) *MockRepository_SaveCheckResult_Call {
+func (_c *MockRepository_SaveCheckResult_Call) RunAndReturn(run func(ctx context.Context, r monitor.CheckResult) error) *MockRepository_SaveCheckResult_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateHTTPConfig provides a mock function for the type MockRepository
+func (_mock *MockRepository) UpdateHTTPConfig(ctx context.Context, cfg monitor.HTTPConfig) error {
+	ret := _mock.Called(ctx, cfg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateHTTPConfig")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, monitor.HTTPConfig) error); ok {
+		r0 = returnFunc(ctx, cfg)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockRepository_UpdateHTTPConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateHTTPConfig'
+type MockRepository_UpdateHTTPConfig_Call struct {
+	*mock.Call
+}
+
+// UpdateHTTPConfig is a helper method to define mock.On call
+//   - ctx context.Context
+//   - cfg monitor.HTTPConfig
+func (_e *MockRepository_Expecter) UpdateHTTPConfig(ctx interface{}, cfg interface{}) *MockRepository_UpdateHTTPConfig_Call {
+	return &MockRepository_UpdateHTTPConfig_Call{Call: _e.mock.On("UpdateHTTPConfig", ctx, cfg)}
+}
+
+func (_c *MockRepository_UpdateHTTPConfig_Call) Run(run func(ctx context.Context, cfg monitor.HTTPConfig)) *MockRepository_UpdateHTTPConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 monitor.HTTPConfig
+		if args[1] != nil {
+			arg1 = args[1].(monitor.HTTPConfig)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRepository_UpdateHTTPConfig_Call) Return(err error) *MockRepository_UpdateHTTPConfig_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockRepository_UpdateHTTPConfig_Call) RunAndReturn(run func(ctx context.Context, cfg monitor.HTTPConfig) error) *MockRepository_UpdateHTTPConfig_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateMonitor provides a mock function for the type MockRepository
-func (_mock *MockRepository) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+func (_mock *MockRepository) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) error {
 	ret := _mock.Called(ctx, id, in)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateMonitor")
 	}
 
-	var r0 monitor.Monitor
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, monitor.UpdateMonitorInput) (monitor.Monitor, error)); ok {
-		return returnFunc(ctx, id, in)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, monitor.UpdateMonitorInput) monitor.Monitor); ok {
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, monitor.UpdateMonitorInput) error); ok {
 		r0 = returnFunc(ctx, id, in)
 	} else {
-		r0 = ret.Get(0).(monitor.Monitor)
+		r0 = ret.Error(0)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID, monitor.UpdateMonitorInput) error); ok {
-		r1 = returnFunc(ctx, id, in)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
+	return r0
 }
 
 // MockRepository_UpdateMonitor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateMonitor'
@@ -400,12 +562,69 @@ func (_c *MockRepository_UpdateMonitor_Call) Run(run func(ctx context.Context, i
 	return _c
 }
 
-func (_c *MockRepository_UpdateMonitor_Call) Return(monitor1 monitor.Monitor, err error) *MockRepository_UpdateMonitor_Call {
-	_c.Call.Return(monitor1, err)
+func (_c *MockRepository_UpdateMonitor_Call) Return(err error) *MockRepository_UpdateMonitor_Call {
+	_c.Call.Return(err)
 	return _c
 }
 
-func (_c *MockRepository_UpdateMonitor_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) (monitor.Monitor, error)) *MockRepository_UpdateMonitor_Call {
+func (_c *MockRepository_UpdateMonitor_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) error) *MockRepository_UpdateMonitor_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdatePingConfig provides a mock function for the type MockRepository
+func (_mock *MockRepository) UpdatePingConfig(ctx context.Context, cfg monitor.PingConfig) error {
+	ret := _mock.Called(ctx, cfg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdatePingConfig")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, monitor.PingConfig) error); ok {
+		r0 = returnFunc(ctx, cfg)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockRepository_UpdatePingConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdatePingConfig'
+type MockRepository_UpdatePingConfig_Call struct {
+	*mock.Call
+}
+
+// UpdatePingConfig is a helper method to define mock.On call
+//   - ctx context.Context
+//   - cfg monitor.PingConfig
+func (_e *MockRepository_Expecter) UpdatePingConfig(ctx interface{}, cfg interface{}) *MockRepository_UpdatePingConfig_Call {
+	return &MockRepository_UpdatePingConfig_Call{Call: _e.mock.On("UpdatePingConfig", ctx, cfg)}
+}
+
+func (_c *MockRepository_UpdatePingConfig_Call) Run(run func(ctx context.Context, cfg monitor.PingConfig)) *MockRepository_UpdatePingConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 monitor.PingConfig
+		if args[1] != nil {
+			arg1 = args[1].(monitor.PingConfig)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRepository_UpdatePingConfig_Call) Return(err error) *MockRepository_UpdatePingConfig_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockRepository_UpdatePingConfig_Call) RunAndReturn(run func(ctx context.Context, cfg monitor.PingConfig) error) *MockRepository_UpdatePingConfig_Call {
 	_c.Call.Return(run)
 	return _c
 }

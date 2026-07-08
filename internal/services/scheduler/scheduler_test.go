@@ -28,11 +28,11 @@ func TestMain(m *testing.M) {
 // --- fakes ---------------------------------------------------------------
 
 type fakeGetter struct {
-	checks []monitor.RunnableCheck
+	checks []monitor.CheckJob
 	err    error
 }
 
-func (f *fakeGetter) ListEnabledCheckConfigs(context.Context) ([]monitor.RunnableCheck, error) {
+func (f *fakeGetter) ListEnabledCheckConfigs(context.Context) ([]monitor.CheckJob, error) {
 	return f.checks, f.err
 }
 
@@ -95,15 +95,27 @@ func (h *fakeHandler) HandleCheckResult(ctx context.Context, r monitor.CheckResu
 
 // --- helpers -------------------------------------------------------------
 
-func runnable(ct monitor.CheckType, interval time.Duration) monitor.RunnableCheck {
-	return monitor.RunnableCheck{
+func runnable(ct monitor.CheckType, interval time.Duration) monitor.CheckJob {
+	if ct == monitor.CheckPing {
+		return monitor.NewPingJob(monitor.CreatePingJobInput{
+			MonitorID: uuid.New(),
+			ConfigID:  uuid.New(),
+			Host:      monitor.ReconstructHost("example.test"),
+			Port:      443,
+			Interval:  interval,
+			Timeout:   time.Second,
+		})
+	}
+	return monitor.NewHTTPJob(monitor.CreateHTTPJobInput{
 		MonitorID: uuid.New(),
 		ConfigID:  uuid.New(),
-		URL:       "http://example.test",
-		CheckType: ct,
+		Scheme:    monitor.SchemeHTTP,
+		Host:      monitor.ReconstructHost("example.test"),
+		Path:      monitor.ReconstructPath("/"),
+		Method:    monitor.MethodGET,
 		Interval:  interval,
 		Timeout:   time.Second,
-	}
+	})
 }
 
 func newTestScheduler(g ConfigsGetter, h ResultHandler, checkers map[monitor.CheckType]checker.Checker) *Scheduler {
@@ -194,15 +206,15 @@ func TestScheduler_DispatchesAndRecordsSuccess(t *testing.T) {
 	h := newFakeHandler()
 
 	s := newTestScheduler(
-		&fakeGetter{checks: []monitor.RunnableCheck{rc}},
+		&fakeGetter{checks: []monitor.CheckJob{rc}},
 		h,
 		map[monitor.CheckType]checker.Checker{monitor.CheckHTTP: chk},
 	)
 	startAndCleanup(t, s)
 
 	r := recvResult(t, h, 2*time.Second)
-	assert.Equal(t, rc.ConfigID, r.ConfigID)
-	assert.Equal(t, rc.MonitorID, r.MonitorID)
+	assert.Equal(t, rc.Base().ConfigID, r.ConfigID)
+	assert.Equal(t, rc.Base().MonitorID, r.MonitorID)
 	assert.Equal(t, 200, r.StatusCode)
 	assert.Equal(t, 5*time.Millisecond, r.ResponseTime)
 }
@@ -213,7 +225,7 @@ func TestScheduler_ReschedulesPeriodically(t *testing.T) {
 	h := newFakeHandler()
 
 	s := newTestScheduler(
-		&fakeGetter{checks: []monitor.RunnableCheck{rc}},
+		&fakeGetter{checks: []monitor.CheckJob{rc}},
 		h,
 		map[monitor.CheckType]checker.Checker{monitor.CheckHTTP: chk},
 	)
@@ -241,7 +253,7 @@ func TestScheduler_RunsAllEnabledConfigs(t *testing.T) {
 	h := newFakeHandler()
 
 	s := newTestScheduler(
-		&fakeGetter{checks: []monitor.RunnableCheck{rc1, rc2}},
+		&fakeGetter{checks: []monitor.CheckJob{rc1, rc2}},
 		h,
 		map[monitor.CheckType]checker.Checker{
 			monitor.CheckHTTP: chk,
@@ -260,17 +272,17 @@ func TestScheduler_RunsAllEnabledConfigs(t *testing.T) {
 			t.Fatalf("expected both configs to run, saw %d", len(seen))
 		}
 	}
-	assert.True(t, seen[rc1.ConfigID])
-	assert.True(t, seen[rc2.ConfigID])
+	assert.True(t, seen[rc1.Base().ConfigID])
+	assert.True(t, seen[rc2.Base().ConfigID])
 }
 
 func TestScheduler_UnknownCheckerType_RecordsFailure(t *testing.T) {
-	rc := runnable(monitor.CheckHeadless, 50*time.Millisecond)
+	rc := runnable(monitor.CheckHTTP, 50*time.Millisecond)
 	h := newFakeHandler()
 
-	// No checker registered for CheckHeadless.
+	// No checker registered for this job's type.
 	s := newTestScheduler(
-		&fakeGetter{checks: []monitor.RunnableCheck{rc}},
+		&fakeGetter{checks: []monitor.CheckJob{rc}},
 		h,
 		map[monitor.CheckType]checker.Checker{},
 	)
@@ -286,7 +298,7 @@ func TestScheduler_CheckerError_RecordsFailure(t *testing.T) {
 	h := newFakeHandler()
 
 	s := newTestScheduler(
-		&fakeGetter{checks: []monitor.RunnableCheck{rc}},
+		&fakeGetter{checks: []monitor.CheckJob{rc}},
 		h,
 		map[monitor.CheckType]checker.Checker{monitor.CheckHTTP: chk},
 	)
@@ -316,7 +328,7 @@ func TestScheduler_StopReturnsBeforeDeadline(t *testing.T) {
 	chk := &fakeChecker{result: checker.CheckResult{Reachable: true}}
 	rc := runnable(monitor.CheckHTTP, 30*time.Millisecond)
 	s := newTestScheduler(
-		&fakeGetter{checks: []monitor.RunnableCheck{rc}},
+		&fakeGetter{checks: []monitor.CheckJob{rc}},
 		newFakeHandler(),
 		map[monitor.CheckType]checker.Checker{monitor.CheckHTTP: chk},
 	)
@@ -349,7 +361,7 @@ func TestScheduler_InFlightCheckDrainsOnStop(t *testing.T) {
 	}
 	h := newFakeHandler()
 	s := newTestScheduler(
-		&fakeGetter{checks: []monitor.RunnableCheck{runnable(monitor.CheckHTTP, 10*time.Millisecond)}},
+		&fakeGetter{checks: []monitor.CheckJob{runnable(monitor.CheckHTTP, 10*time.Millisecond)}},
 		h,
 		map[monitor.CheckType]checker.Checker{monitor.CheckHTTP: chk},
 	)

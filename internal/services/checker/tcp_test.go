@@ -87,7 +87,7 @@ func TestTCPChecker(t *testing.T) {
 			url := tc.setup(t)
 
 			res, err := TCPChecker{}.Check(t.Context(), CheckRequest{
-				URL:     url,
+				Target:  url,
 				Timeout: tc.reqTimeout,
 			})
 

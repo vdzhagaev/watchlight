@@ -1,95 +1,18 @@
 package monitor
 
 import (
-	"time"
+	"slices"
 
 	"github.com/google/uuid"
 )
 
-const (
-	DefaultCheckInterval = 60
-	DefaultCheckTimeout  = 10
-	DefaultMaxAttempts   = 3
-
-	MinCheckInterval = 10
-	MinCheckTimeout  = 2
-	MinMaxAttempts   = 1
-)
-
-type MonitorStatus string
-
-const (
-	MonitorUp      MonitorStatus = "up"
-	MonitorDown    MonitorStatus = "down"
-	MonitorUnknown MonitorStatus = "unknown"
-)
-
-type CheckStatus string
-
-const (
-	CheckSuccess CheckStatus = "success"
-	CheckFailure CheckStatus = "failure"
-)
-
-type CheckType string
-
-const (
-	CheckPing     CheckType = "ping"
-	CheckHTTP     CheckType = "http"
-	CheckHeadless CheckType = "headless"
-)
-
-type MonitorCheckConfig struct {
-	ID                uuid.UUID `json:"id"`
-	MonitorID         uuid.UUID `json:"monitor_id"`
-	CheckType         CheckType `json:"check_type"`
-	IsEnabled         bool      `json:"is_enabled"`
-	CheckInterval     int       `json:"check_interval"`
-	CheckTimeout      int       `json:"check_timeout"`
-	MaxAttempts       int       `json:"max_attempts"`
-	DoErrorScreenshot bool      `json:"do_error_screenshot"`
-	Keywords          []string  `json:"keywords,omitempty"`
-}
-
 type Monitor struct {
-	ID           uuid.UUID            `json:"id"`
-	Name         string               `json:"name"`
-	URL          string               `json:"url"`
-	Status       MonitorStatus        `json:"status"`
-	CheckConfigs []MonitorCheckConfig `json:"checks"`
-}
-
-type RunnableCheck struct {
-	MonitorID   uuid.UUID
-	ConfigID    uuid.UUID
-	URL         string
-	CheckType   CheckType
-	Interval    time.Duration
-	Timeout     time.Duration
-	Keywords    []string
-	MaxAttempts int
-}
-
-type MonitorCheckResult struct {
-	ID             uuid.UUID     `json:"id"`
-	MonitorID      uuid.UUID     `json:"monitor_id"`
-	ConfigID       uuid.UUID     `json:"config_id"`
-	Status         CheckStatus   `json:"status"`
-	StatusCode     int           `json:"status_code"`
-	ResponseTime   time.Duration `json:"response_time"`
-	CheckedAt      time.Time     `json:"checked_at"`
-	Error          string        `json:"error,omitempty"`
-	ScreenshotPath string        `json:"screenshot_path,omitempty"`
-	FoundKeywords  []string      `json:"found_keywords,omitempty"`
-}
-
-func (m *Monitor) GetConfig(t CheckType) (MonitorCheckConfig, bool) {
-	for _, cfg := range m.CheckConfigs {
-		if cfg.CheckType == t {
-			return cfg, true
-		}
-	}
-	return MonitorCheckConfig{}, false
+	ID          uuid.UUID
+	Name        string
+	Host        Host
+	Status      MonitorStatus
+	PingConfig  PingConfig
+	HTTPConfigs []HTTPConfig
 }
 
 func New(in CreateMonitorInput) (Monitor, error) {
@@ -97,76 +20,136 @@ func New(in CreateMonitorInput) (Monitor, error) {
 	if err != nil {
 		return Monitor{}, err
 	}
-	if in.Name == "" {
-		return Monitor{}, ErrMonitorEmptyName
+
+	err = validateMonitor(in)
+	if err != nil {
+		return Monitor{}, err
 	}
 
-	if in.URL == "" {
-		return Monitor{}, ErrMonitorEmptyURL
+	host, err := NewHost(in.Host)
+	if err != nil {
+		return Monitor{}, err
 	}
 
-	if len(in.CheckConfigs) == 0 {
-		return Monitor{}, ErrMonitorNoChecks
+	var pingConfig PingConfig
+
+	if in.PingConfig == nil {
+		pingConfig = NewDefaultPingConfig(id)
+	} else {
+		pingConfig, err = NewPingConfig(id, *in.PingConfig)
+		if err != nil {
+			return Monitor{}, err
+		}
 	}
 
-	configs, err := buildConfigs(id, in.CheckConfigs)
+	configs, err := buildHTTPConfigs(id, in.HTTPConfigs)
 	if err != nil {
 		return Monitor{}, err
 	}
 
 	return Monitor{
-		ID:           id,
-		Name:         in.Name,
-		URL:          in.URL,
-		Status:       MonitorUnknown,
-		CheckConfigs: configs,
+		ID:          id,
+		Name:        in.Name,
+		Host:        host,
+		Status:      MonitorUnknown,
+		PingConfig:  pingConfig,
+		HTTPConfigs: configs,
 	}, nil
 }
 
-func buildConfigs(id uuid.UUID, configs []CreateMonitorCheckConfigInput) ([]MonitorCheckConfig, error) {
-	var checks []MonitorCheckConfig
-	for _, chk := range configs {
-		checkEnable := true
-		if chk.IsEnabled != nil {
-			checkEnable = *chk.IsEnabled
-		}
-
-		interval := chk.CheckInterval
-		if interval == 0 {
-			interval = DefaultCheckInterval
-		} else if interval < MinCheckInterval {
-			return nil, ErrCheckIntervalTooSmall
-		}
-
-		timeout := chk.CheckTimeout
-		if timeout == 0 {
-			timeout = DefaultCheckTimeout
-		} else if timeout < MinCheckTimeout {
-			return nil, ErrCheckTimeoutTooSmall
-		}
-
-		maxAttempts := chk.MaxAttempts
-		if maxAttempts == 0 {
-			maxAttempts = DefaultMaxAttempts
-		} else if maxAttempts < MinMaxAttempts {
-			return nil, ErrMaxAttemptsTooSmall
-		}
-
-		checkID, err := uuid.NewV7()
-		if err != nil {
-			return nil, err
-		}
-		checks = append(checks, MonitorCheckConfig{
-			ID:                checkID,
-			MonitorID:         id,
-			CheckType:         chk.CheckType,
-			IsEnabled:         checkEnable,
-			CheckInterval:     interval,
-			CheckTimeout:      timeout,
-			MaxAttempts:       maxAttempts,
-			DoErrorScreenshot: chk.DoErrorScreenshot,
-			Keywords:          chk.Keywords,
-		})
+// ReconstructMonitor rebuilds a Monitor aggregate from trusted stored values and
+// its already-reconstructed children. Host is wrapped and Status is cast without
+// validation — storage rehydration only.
+func ReconstructMonitor(
+	id uuid.UUID,
+	name, host, status string,
+	pingConfig PingConfig,
+	httpConfigs []HTTPConfig,
+) Monitor {
+	return Monitor{
+		ID:          id,
+		Name:        name,
+		Host:        ReconstructHost(host),
+		Status:      MonitorStatus(status),
+		PingConfig:  pingConfig,
+		HTTPConfigs: httpConfigs,
 	}
-	return checks, nil
+}
+
+func validateMonitor(in CreateMonitorInput) error {
+	if in.Name == "" {
+		return ErrMonitorEmptyName
+	}
+
+	return nil
+}
+
+func enabledOrDefault(p *bool) bool {
+	if p == nil {
+		return true
+	}
+	return *p
+}
+
+func (m *Monitor) UpdatePingConfig(in UpdatePingConfigInput) error {
+	pingConfig, err := m.PingConfig.Update(in)
+	if err != nil {
+		return err
+	}
+	m.PingConfig = pingConfig
+	return nil
+}
+
+func (m *Monitor) UpdateHTTPConfig(configID uuid.UUID, in UpdateHTTPConfigInput) (HTTPConfig, error) {
+	index := slices.IndexFunc(m.HTTPConfigs, func(c HTTPConfig) bool {
+		return c.ID == configID
+	})
+	if index == -1 {
+		return HTTPConfig{}, ErrHTTPConfigNotFound
+	}
+
+	hc := m.HTTPConfigs[index]
+
+	updated, err := hc.Update(in)
+	if err != nil {
+		return HTTPConfig{}, err
+	}
+	dup := slices.IndexFunc(m.HTTPConfigs, func(c HTTPConfig) bool {
+		return c.ID != updated.ID && c.Scheme == updated.Scheme && c.Path == updated.Path && c.Method == updated.Method
+	})
+	if dup != -1 {
+		return HTTPConfig{}, ErrHTTPConfigExists
+	}
+	m.HTTPConfigs[index] = updated
+	return updated, nil
+}
+
+func (m *Monitor) AddHTTPConfig(in CreateHTTPConfigInput) (HTTPConfig, error) {
+	hc, err := NewHTTPConfig(m.ID, in)
+
+	if err != nil {
+		return HTTPConfig{}, err
+	}
+
+	index := slices.IndexFunc(m.HTTPConfigs, func(c HTTPConfig) bool {
+		return c.Scheme == hc.Scheme && c.Path == hc.Path && c.Method == hc.Method
+	})
+
+	if index != -1 {
+		return HTTPConfig{}, ErrHTTPConfigExists
+	}
+
+	m.HTTPConfigs = append(m.HTTPConfigs, hc)
+	return hc, nil
+}
+
+func (m *Monitor) RemoveHTTPConfig(configID uuid.UUID) error {
+	index := slices.IndexFunc(m.HTTPConfigs, func(c HTTPConfig) bool {
+		return c.ID == configID
+	})
+	if index == -1 {
+		return ErrHTTPConfigNotFound
+	}
+	m.HTTPConfigs = slices.Delete(m.HTTPConfigs, index, index+1)
+	return nil
 }

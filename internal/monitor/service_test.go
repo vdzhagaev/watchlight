@@ -28,9 +28,9 @@ func newSvc(t *testing.T) (*monitor.Service, *mocks.MockRepository) {
 func validInput() monitor.CreateMonitorInput {
 	return monitor.CreateMonitorInput{
 		Name: "x",
-		URL:  "https://x.com",
-		CheckConfigs: []monitor.CreateMonitorCheckConfigInput{
-			{CheckType: monitor.CheckHTTP, CheckInterval: 60, CheckTimeout: 5, MaxAttempts: 3},
+		Host: "x.com",
+		HTTPConfigs: []monitor.CreateHTTPConfigInput{
+			{Scheme: "https", Path: "/", Method: "GET", Interval: 60, Timeout: 5, MaxAttempts: 3},
 		},
 	}
 }
@@ -104,10 +104,10 @@ func TestService_Update_Propagates(t *testing.T) {
 
 	repo.EXPECT().
 		UpdateMonitor(mock.Anything, id, mock.AnythingOfType("monitor.UpdateMonitorInput")).
-		Return(monitor.Monitor{}, monitor.ErrMonitorNotFound).
+		Return(monitor.ErrMonitorNotFound).
 		Once()
 
-	_, err := svc.Update(context.Background(), id, monitor.UpdateMonitorInput{Name: &name})
+	err := svc.Update(context.Background(), id, monitor.UpdateMonitorInput{Name: &name})
 	if !errors.Is(err, monitor.ErrMonitorNotFound) {
 		t.Errorf("err = %v, want %v", err, monitor.ErrMonitorNotFound)
 	}
@@ -133,10 +133,10 @@ func TestService_Delete_Propagates(t *testing.T) {
 func TestService_HandleCheckResult_MintsFreshID(t *testing.T) {
 	svc, repo := newSvc(t)
 
-	var saved []monitor.MonitorCheckResult
+	var saved []monitor.CheckResult
 	repo.EXPECT().
-		SaveCheckResult(mock.Anything, mock.AnythingOfType("monitor.MonitorCheckResult")).
-		Run(func(_ context.Context, r monitor.MonitorCheckResult) { saved = append(saved, r) }).
+		SaveCheckResult(mock.Anything, mock.AnythingOfType("monitor.CheckResult")).
+		Run(func(_ context.Context, r monitor.CheckResult) { saved = append(saved, r) }).
 		Return(nil).
 		Times(2)
 
@@ -178,10 +178,10 @@ func TestService_HandleCheckResult_DerivesStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc, repo := newSvc(t)
 
-			var got monitor.MonitorCheckResult
+			var got monitor.CheckResult
 			repo.EXPECT().
-				SaveCheckResult(mock.Anything, mock.AnythingOfType("monitor.MonitorCheckResult")).
-				Run(func(_ context.Context, r monitor.MonitorCheckResult) { got = r }).
+				SaveCheckResult(mock.Anything, mock.AnythingOfType("monitor.CheckResult")).
+				Run(func(_ context.Context, r monitor.CheckResult) { got = r }).
 				Return(nil).
 				Once()
 

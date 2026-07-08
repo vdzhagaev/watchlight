@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/vdzhagaev/watchlight/internal/monitor"
@@ -25,9 +25,10 @@ func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 
 	defer tx.Rollback()
 
+	// Save the monitor
 	_, err = tx.ExecContext(ctx,
-		"INSERT INTO monitors (id, name, url, status) VALUES (?, ?, ?, ?)",
-		m.ID, m.Name, m.URL, m.Status,
+		"INSERT INTO monitors (id, name, host, status) VALUES (?, ?, ?, ?)",
+		m.ID, m.Name, m.Host.String(), m.Status,
 	)
 	if err != nil {
 		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
@@ -36,19 +37,42 @@ func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
+	// Save the ping config
+	_, err = tx.ExecContext(ctx,
+		`
+			INSERT INTO ping_configs
+			(id, monitor_id, port,
+			is_enabled, interval,
+			timeout, max_attempts)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`,
+		m.PingConfig.ID,
+		m.ID,
+		m.PingConfig.Port,
+		m.PingConfig.IsEnabled,
+		m.PingConfig.Interval.Seconds(),
+		m.PingConfig.Timeout.Seconds(),
+		m.PingConfig.MaxAttempts.Count(),
+	)
+	if err != nil {
+		return fmt.Errorf("%s: insert ping config: %w", op, err)
+	}
+
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO monitor_check_configs
-		(id, monitor_id, check_type,
-		is_enabled, check_interval, check_timeout,
-		max_attempts, do_error_screenshot, keywords)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO http_configs
+		(id, monitor_id, scheme, path, method,
+		is_enabled, interval,
+		timeout, max_attempts, keywords)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
+
 	if err != nil {
 		return fmt.Errorf("%s: prepare stmt: %w", op, err)
 	}
 	defer stmt.Close()
 
-	for _, cfg := range m.CheckConfigs {
+	// Check http configs and save if exists
+	for _, cfg := range m.HTTPConfigs {
 		keywordsJSON, err := json.Marshal(cfg.Keywords)
 		if err != nil {
 			return fmt.Errorf("%s: json config keywords: %w", op, err)
@@ -57,12 +81,13 @@ func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 		_, err = stmt.ExecContext(ctx,
 			cfg.ID,
 			m.ID,
-			cfg.CheckType,
+			string(cfg.Scheme),
+			cfg.Path.String(),
+			string(cfg.Method),
 			cfg.IsEnabled,
-			cfg.CheckInterval,
-			cfg.CheckTimeout,
-			cfg.MaxAttempts,
-			cfg.DoErrorScreenshot,
+			cfg.Interval.Seconds(),
+			cfg.Timeout.Seconds(),
+			cfg.MaxAttempts.Count(),
 			string(keywordsJSON),
 		)
 		if err != nil {
@@ -77,144 +102,183 @@ func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 	return nil
 }
 
-func (s *Storage) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) (monitor.Monitor, error) {
-	const op = "storage.sqlite.UpdateMonitor"
+func (s *Storage) SetMonitorStatus(ctx context.Context, id uuid.UUID, status monitor.MonitorStatus) error {
+	const op = "storage.sqlite.SetMonitorStatus"
 
-	columns := []string{}
-	args := []any{}
-
-	if in.Name != nil {
-		columns = append(columns, "name = ?")
-		args = append(args, *in.Name)
-	}
-	if in.URL != nil {
-		columns = append(columns, "url = ?")
-		args = append(args, *in.URL)
-	}
-	if in.Status != nil {
-		columns = append(columns, "status = ?")
-		args = append(args, *in.Status)
-	}
-
-	if len(columns) == 0 {
-		return s.GetMonitor(ctx, id)
-	}
-
-	args = append(args, id)
-
-	query := fmt.Sprintf(
-		"UPDATE monitors SET %s WHERE id = ?",
-		strings.Join(columns, ", "),
-	)
-
-	res, err := s.db.ExecContext(ctx, query, args...)
+	res, err := s.db.ExecContext(ctx, "UPDATE monitors SET status = ? WHERE id = ?", status, id)
 	if err != nil {
-		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-			return monitor.Monitor{}, fmt.Errorf("%s: %w", op, monitor.ErrMonitorExists)
-		}
-		return monitor.Monitor{}, fmt.Errorf("%s: update monitor: %w", op, err)
+		return fmt.Errorf("%s: update status: %w", op, err)
 	}
 
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return monitor.Monitor{}, fmt.Errorf("%s: rows affected: %w", op, err)
+		return fmt.Errorf("%s: rows affected: %w", op, err)
 	}
 	if affected == 0 {
-		return monitor.Monitor{}, monitor.ErrMonitorNotFound
+		return monitor.ErrMonitorNotFound
 	}
-	return s.GetMonitor(ctx, id)
+	return nil
+}
+
+func (s *Storage) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) error {
+	const op = "storage.sqlite.UpdateMonitor"
+
+	// A nil field -> invalid NullString -> SQL NULL -> COALESCE keeps the column.
+	// One atomic UPDATE does the partial merge; no read-modify-write race.
+	var status *string
+	if in.Status != nil {
+		status = (*string)(in.Status)
+	}
+
+	res, err := s.db.ExecContext(
+		ctx,
+		`UPDATE monitors SET
+			name = COALESCE(?, name),
+			host = COALESCE(?, host),
+			status = COALESCE(?, status)
+		WHERE id = ?`,
+		toNullString(in.Name), toNullString(in.Host), toNullString(status), id,
+	)
+	if err != nil {
+		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			return fmt.Errorf("%s: %w", op, monitor.ErrMonitorExists)
+		}
+		return fmt.Errorf("%s: update monitor: %w", op, err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: rows affected: %w", op, err)
+	}
+	if affected == 0 {
+		return monitor.ErrMonitorNotFound
+	}
+
+	return nil
+}
+
+// toNullString maps an optional string to a nullable SQL argument: nil -> NULL.
+func toNullString(p *string) sql.NullString {
+	if p == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *p, Valid: true}
 }
 
 func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor, error) {
 	const op = "storage.sqlite.GetMonitor"
 
-	query := `
+	monitorAndPingQuery := `
 		SELECT
-			m.id, m.name, m.url, m.status,
-			c.id, c.check_type, c.is_enabled, c.check_interval,
-			c.check_timeout, c.max_attempts, c.do_error_screenshot,
-			c.keywords
+			m.id, m.name, m.host, m.status,
+			p.id, p.port, p.is_enabled, p.interval,
+			p.timeout, p.max_attempts
 		FROM monitors AS m
-		LEFT JOIN monitor_check_configs AS c ON m.id = c.monitor_id
+		JOIN ping_configs AS p ON m.id = p.monitor_id
 		WHERE m.id = ?
-		ORDER BY m.id
 	`
 
-	rows, err := s.db.QueryContext(ctx, query, id)
+	var (
+		mID          uuid.UUID
+		mName        string
+		mHost        string
+		mStatus      string
+		pID          uuid.UUID
+		pPort        int
+		pIsEnabled   bool
+		pInterval    int
+		pTimeout     int
+		pMaxAttempts int
+	)
+
+	err := s.db.QueryRowContext(ctx, monitorAndPingQuery, id).Scan(
+		&mID, &mName, &mHost, &mStatus,
+		&pID, &pPort, &pIsEnabled, &pInterval,
+		&pTimeout, &pMaxAttempts,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return monitor.Monitor{}, fmt.Errorf("%s: %w", op, monitor.ErrMonitorNotFound)
+		}
+		return monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
+	}
+
+	pingConfig := monitor.ReconstructPingConfig(
+		pID,
+		mID,
+		uint16(pPort),
+		pIsEnabled,
+		pInterval,
+		pTimeout,
+		pMaxAttempts,
+	)
+
+	httpConfigsQuery := `
+		SELECT
+			id, scheme, path, method, is_enabled,
+			interval, timeout, max_attempts, keywords
+		FROM http_configs
+		WHERE monitor_id = ?
+		ORDER BY id
+	`
+
+	rows, err := s.db.QueryContext(ctx, httpConfigsQuery, id)
 	if err != nil {
 		return monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
 	}
 	defer rows.Close()
 
-	var m monitor.Monitor
-	var found bool
+	httpConfigs := make([]monitor.HTTPConfig, 0)
 
 	for rows.Next() {
 		var (
-			mID     uuid.NullUUID
-			mName   string
-			mURL    string
-			mStatus monitor.MonitorStatus
-
-			cID                uuid.NullUUID
-			cType              sql.NullString
-			cEnabled           sql.NullBool
-			cInterval          sql.NullInt64
-			cTimeout           sql.NullInt64
-			cMaxAttempts       sql.NullInt64
-			cDoErrorScreenshot sql.NullBool
-			cKeywordsRaw       sql.NullString
+			hID          uuid.UUID
+			hScheme      string
+			hPath        string
+			hMethod      string
+			hIsEnabled   bool
+			hInterval    int
+			hTimeout     int
+			hMaxAttempts int
+			hKeywordsRaw sql.NullString
 		)
 
 		if err := rows.Scan(
-			&mID, &mName, &mURL, &mStatus,
-			&cID, &cType, &cEnabled, &cInterval, &cTimeout,
-			&cMaxAttempts, &cDoErrorScreenshot, &cKeywordsRaw,
+			&hID, &hScheme, &hPath, &hMethod, &hIsEnabled,
+			&hInterval, &hTimeout, &hMaxAttempts, &hKeywordsRaw,
 		); err != nil {
 			return monitor.Monitor{}, fmt.Errorf("%s: scan config: %w", op, err)
 		}
 
-		if !found {
-			m = monitor.Monitor{
-				ID:           mID.UUID,
-				Name:         mName,
-				URL:          mURL,
-				Status:       mStatus,
-				CheckConfigs: []monitor.MonitorCheckConfig{},
+		keywords := make([]string, 0)
+		if hKeywordsRaw.Valid && hKeywordsRaw.String != "" {
+			err := json.Unmarshal([]byte(hKeywordsRaw.String), &keywords)
+			if err != nil {
+				return monitor.Monitor{}, fmt.Errorf("%s: error unmarshal keywords from base: %w", op, err)
 			}
-			found = true
 		}
+		cfg := monitor.ReconstructHTTPConfig(
+			hID,
+			mID,
+			hScheme,
+			hPath,
+			hMethod,
+			hIsEnabled,
+			hInterval,
+			hTimeout,
+			hMaxAttempts,
+			keywords,
+		)
+		httpConfigs = append(httpConfigs, cfg)
 
-		if cID.Valid {
-			cfg := monitor.MonitorCheckConfig{
-				ID:                cID.UUID,
-				MonitorID:         mID.UUID,
-				CheckType:         monitor.CheckType(cType.String),
-				IsEnabled:         cEnabled.Bool,
-				CheckInterval:     int(cInterval.Int64),
-				CheckTimeout:      int(cTimeout.Int64),
-				MaxAttempts:       int(cMaxAttempts.Int64),
-				DoErrorScreenshot: cDoErrorScreenshot.Bool,
-			}
-			if cKeywordsRaw.Valid && cKeywordsRaw.String != "" {
-				err := json.Unmarshal([]byte(cKeywordsRaw.String), &cfg.Keywords)
-				if err != nil {
-					return monitor.Monitor{}, fmt.Errorf("%s: error unmarshal keywords from base: %w", op, err)
-				}
-			}
-			m.CheckConfigs = append(m.CheckConfigs, cfg)
-		}
 	}
 
 	if err := rows.Err(); err != nil {
-		return monitor.Monitor{}, fmt.Errorf("%s: rows iteration error: %w", op, err)
+		return monitor.Monitor{}, fmt.Errorf("%s: collect http configs error: %w", op, err)
 	}
 
-	if !found {
-		return monitor.Monitor{}, monitor.ErrMonitorNotFound
-	}
-
-	return m, nil
+	return monitor.ReconstructMonitor(mID, mName, mHost, mStatus, pingConfig, httpConfigs), nil
 }
 
 func (s *Storage) DeleteMonitor(ctx context.Context, id uuid.UUID) error {
@@ -240,88 +304,133 @@ func (s *Storage) DeleteMonitor(ctx context.Context, id uuid.UUID) error {
 func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error) {
 	const op = "storage.sqlite.GetMonitorList"
 
-	query := `
+	allMonitorsWithPingQuery := `
 		SELECT
-			m.id, m.name, m.url, m.status,
-			c.id, c.check_type, c.is_enabled, c.check_interval,
-			c.check_timeout, c.max_attempts, c.do_error_screenshot,
-			c.keywords
+			m.id, m.name, m.host, m.status,
+			p.id, p.port, p.is_enabled, p.interval,
+			p.timeout, p.max_attempts
 		FROM monitors AS m
-		LEFT JOIN monitor_check_configs AS c ON m.id = c.monitor_id
+		JOIN ping_configs AS p ON m.id = p.monitor_id
 		ORDER BY m.id
 	`
 
-	rows, err := s.db.QueryContext(ctx, query)
+	monitorPingRows, err := s.db.QueryContext(ctx, allMonitorsWithPingQuery)
 	if err != nil {
-		return []monitor.Monitor{}, fmt.Errorf("%s: %w", op, err)
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
-	defer rows.Close()
+
+	defer monitorPingRows.Close()
 
 	monitors := make(map[uuid.UUID]monitor.Monitor)
 	order := []uuid.UUID{}
 
-	for rows.Next() {
+	for monitorPingRows.Next() {
 		var (
-			mID     uuid.NullUUID
-			mName   string
-			mURL    string
-			mStatus monitor.MonitorStatus
-
-			cID                uuid.NullUUID
-			cType              sql.NullString
-			cEnabled           sql.NullBool
-			cInterval          sql.NullInt64
-			cTimeout           sql.NullInt64
-			cMaxAttempts       sql.NullInt64
-			cDoErrorScreenshot sql.NullBool
-			cKeywordsRaw       sql.NullString
+			mID          uuid.UUID
+			mName        string
+			mHost        string
+			mStatus      string
+			pID          uuid.UUID
+			pPort        int
+			pIsEnabled   bool
+			pInterval    int
+			pTimeout     int
+			pMaxAttempts int
 		)
 
-		if err := rows.Scan(
-			&mID, &mName, &mURL, &mStatus,
-			&cID, &cType, &cEnabled, &cInterval, &cTimeout,
-			&cMaxAttempts, &cDoErrorScreenshot, &cKeywordsRaw,
+		if err := monitorPingRows.Scan(
+			&mID, &mName, &mHost, &mStatus,
+			&pID, &pPort, &pIsEnabled, &pInterval,
+			&pTimeout, &pMaxAttempts,
 		); err != nil {
-			return []monitor.Monitor{}, fmt.Errorf("%s: scan config: %w", op, err)
+			return nil, fmt.Errorf("%s: monitor-ping scan error: %w", op, err)
 		}
 
-		m, ok := monitors[mID.UUID]
+		pingConfig := monitor.ReconstructPingConfig(
+			pID,
+			mID,
+			uint16(pPort),
+			pIsEnabled,
+			pInterval,
+			pTimeout,
+			pMaxAttempts,
+		)
+
+		monitors[mID] = monitor.ReconstructMonitor(mID, mName, mHost, mStatus, pingConfig, []monitor.HTTPConfig{})
+		order = append(order, mID)
+	}
+
+	if err := monitorPingRows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: monitor-ping rows iteration error: %w", op, err)
+	}
+
+	allHttpConfQuery := `
+		SELECT
+			id, monitor_id, scheme, path, method, is_enabled,
+			interval, timeout, max_attempts, keywords
+		FROM http_configs
+		ORDER BY monitor_id, id
+	`
+	httpConfigRows, err := s.db.QueryContext(ctx, allHttpConfQuery)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	defer httpConfigRows.Close()
+
+	for httpConfigRows.Next() {
+		var (
+			hID          uuid.UUID
+			hMonitorID   uuid.UUID
+			hScheme      string
+			hPath        string
+			hMethod      string
+			hIsEnabled   bool
+			hInterval    int
+			hTimeout     int
+			hMaxAttempts int
+			hKeywordsRaw sql.NullString
+		)
+
+		if err := httpConfigRows.Scan(
+			&hID, &hMonitorID, &hScheme, &hPath, &hMethod, &hIsEnabled,
+			&hInterval, &hTimeout, &hMaxAttempts, &hKeywordsRaw,
+		); err != nil {
+			return nil, fmt.Errorf("%s: scan http config: %w", op, err)
+		}
+
+		m, ok := monitors[hMonitorID]
 		if !ok {
-			m = monitor.Monitor{
-				ID:           mID.UUID,
-				Name:         mName,
-				URL:          mURL,
-				Status:       mStatus,
-				CheckConfigs: []monitor.MonitorCheckConfig{},
-			}
-			order = append(order, m.ID)
+			return nil, fmt.Errorf("%s: http config %s references unknown monitor %s", op, hID, hMonitorID)
 		}
 
-		var cfg monitor.MonitorCheckConfig
+		keywords := make([]string, 0)
 
-		if cID.Valid {
-			cfg = monitor.MonitorCheckConfig{
-				ID:                cID.UUID,
-				MonitorID:         mID.UUID,
-				CheckType:         monitor.CheckType(cType.String),
-				IsEnabled:         cEnabled.Bool,
-				CheckInterval:     int(cInterval.Int64),
-				CheckTimeout:      int(cTimeout.Int64),
-				MaxAttempts:       int(cMaxAttempts.Int64),
-				DoErrorScreenshot: cDoErrorScreenshot.Bool,
+		if hKeywordsRaw.Valid && hKeywordsRaw.String != "" {
+			err := json.Unmarshal([]byte(hKeywordsRaw.String), &keywords)
+			if err != nil {
+				return []monitor.Monitor{}, fmt.Errorf("%s: error unmarshal keywords from base: %w", op, err)
 			}
-			if cKeywordsRaw.Valid && cKeywordsRaw.String != "" {
-				err := json.Unmarshal([]byte(cKeywordsRaw.String), &cfg.Keywords)
-				if err != nil {
-					return []monitor.Monitor{}, fmt.Errorf("%s: error unmarshal keywords from base: %w", op, err)
-				}
-			}
-			m.CheckConfigs = append(m.CheckConfigs, cfg)
 		}
+
+		cfg := monitor.ReconstructHTTPConfig(
+			hID,
+			hMonitorID,
+			hScheme,
+			hPath,
+			hMethod,
+			hIsEnabled,
+			hInterval,
+			hTimeout,
+			hMaxAttempts,
+			keywords,
+		)
+
+		m.HTTPConfigs = append(m.HTTPConfigs, cfg)
 		monitors[m.ID] = m
 	}
 
-	if err := rows.Err(); err != nil {
+	if err := httpConfigRows.Err(); err != nil {
 		return []monitor.Monitor{}, fmt.Errorf("%s: rows iteration error: %w", op, err)
 	}
 
@@ -333,101 +442,179 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 	return output, nil
 }
 
-func (s *Storage) ListEnabledCheckConfigs(ctx context.Context) ([]monitor.RunnableCheck, error) {
+func (s *Storage) ListEnabledCheckConfigs(ctx context.Context) ([]monitor.CheckJob, error) {
 	const op = "storage.sqlite.ListEnabledCheckConfigs"
 
-	query := `
+	allPingConfigsQuery := `
 		SELECT
-			m.id, m.url,
-			c.id, c.check_type, c.check_interval,
-			c.check_timeout, c.max_attempts, c.keywords
-		FROM monitors AS m
-		JOIN monitor_check_configs AS c ON m.id = c.monitor_id
-		WHERE c.is_enabled = 1
-		ORDER BY m.id
+			p.id, p.monitor_id, p.port, p.is_enabled, p.interval,
+			p.timeout, p.max_attempts,
+			m.host
+		FROM ping_configs AS p
+		JOIN monitors AS m ON m.id = p.monitor_id
+		WHERE p.is_enabled = 1
 	`
 
-	rows, err := s.db.QueryContext(ctx, query)
+	pingRows, err := s.db.QueryContext(ctx, allPingConfigsQuery)
 	if err != nil {
-		return []monitor.RunnableCheck{}, fmt.Errorf("%s: %w", op, err)
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
-	defer rows.Close()
 
-	var checks []monitor.RunnableCheck
+	defer pingRows.Close()
 
-	for rows.Next() {
+	jobs := make([]monitor.CheckJob, 0)
+
+	for pingRows.Next() {
 		var (
-			mID  uuid.NullUUID
-			mURL string
-
-			cID          uuid.NullUUID
-			cType        monitor.CheckType
-			cInterval    int64
-			cTimeout     int64
-			cMaxAttempts int64
-			cKeywordsRaw sql.NullString
+			mHost        string
+			pID          uuid.UUID
+			pMonitorID   uuid.UUID
+			pPort        int64
+			pIsEnabled   bool
+			pInterval    int
+			pTimeout     int
+			pMaxAttempts int
 		)
 
-		if err := rows.Scan(
-			&mID, &mURL,
-			&cID, &cType, &cInterval, &cTimeout,
-			&cMaxAttempts, &cKeywordsRaw,
+		if err := pingRows.Scan(
+			&pID, &pMonitorID, &pPort,
+			&pIsEnabled, &pInterval,
+			&pTimeout, &pMaxAttempts,
+			&mHost,
 		); err != nil {
-			return []monitor.RunnableCheck{}, fmt.Errorf("%s: scan config: %w", op, err)
+			return nil, fmt.Errorf("%s: ping config scan error: %w", op, err)
 		}
 
-		check := monitor.RunnableCheck{
-			MonitorID:   mID.UUID,
-			ConfigID:    cID.UUID,
-			URL:         mURL,
-			CheckType:   cType,
-			Interval:    time.Duration(int(cInterval)) * time.Second,
-			Timeout:     time.Duration(int(cTimeout)) * time.Second,
-			MaxAttempts: int(cMaxAttempts),
-		}
+		host := monitor.ReconstructHost(mHost)
 
-		if cKeywordsRaw.Valid && cKeywordsRaw.String != "" {
-			err := json.Unmarshal([]byte(cKeywordsRaw.String), &check.Keywords)
+		pj := monitor.NewPingJob(monitor.CreatePingJobInput{
+			MonitorID:   pMonitorID,
+			ConfigID:    pID,
+			Host:        host,
+			Port:        uint16(pPort),
+			Interval:    time.Second * time.Duration(pInterval),
+			Timeout:     time.Second * time.Duration(pTimeout),
+			MaxAttempts: pMaxAttempts,
+		})
+
+		jobs = append(jobs, pj)
+	}
+
+	if err := pingRows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: ping config rows iteration error: %w", op, err)
+	}
+
+	allHttpConfQuery := `
+		SELECT
+			h.id, h.monitor_id, h.scheme, h.path, h.method,
+			h.interval, h.timeout, h.max_attempts, h.keywords,
+			m.host
+		FROM http_configs as h
+		JOIN monitors as m ON m.id = h.monitor_id
+		WHERE h.is_enabled = 1
+	`
+
+	httpRows, err := s.db.QueryContext(ctx, allHttpConfQuery)
+	if err != nil {
+		return []monitor.CheckJob{}, fmt.Errorf("%s: %w", op, err)
+	}
+	defer httpRows.Close()
+
+	for httpRows.Next() {
+		var (
+			mHost string
+
+			hID          uuid.UUID
+			hMonitorID   uuid.UUID
+			hScheme      monitor.HTTPScheme
+			hPath        string
+			hMethod      monitor.HTTPMethod
+			hInterval    int
+			hTimeout     int
+			hMaxAttempts int
+			hKeywordsRaw sql.NullString
+		)
+
+		if err := httpRows.Scan(
+			&hID, &hMonitorID, &hScheme,
+			&hPath, &hMethod, &hInterval,
+			&hTimeout, &hMaxAttempts,
+			&hKeywordsRaw, &mHost,
+		); err != nil {
+			return []monitor.CheckJob{}, fmt.Errorf("%s: scan http config: %w", op, err)
+		}
+		var keywords []string
+
+		if hKeywordsRaw.Valid && hKeywordsRaw.String != "" {
+			err := json.Unmarshal([]byte(hKeywordsRaw.String), &keywords)
 			if err != nil {
-				return []monitor.RunnableCheck{}, fmt.Errorf("%s: error unmarshal keywords from base: %w", op, err)
+				return []monitor.CheckJob{}, fmt.Errorf("%s: error unmarshal keywords from base: %w", op, err)
 			}
 		}
 
-		checks = append(checks, check)
+		host := monitor.ReconstructHost(mHost)
+		path := monitor.ReconstructPath(hPath)
+
+		hj := monitor.NewHTTPJob(monitor.CreateHTTPJobInput{
+			MonitorID:   hMonitorID,
+			ConfigID:    hID,
+			Scheme:      hScheme,
+			Host:        host,
+			Path:        path,
+			Method:      hMethod,
+			Interval:    time.Second * time.Duration(hInterval),
+			Timeout:     time.Second * time.Duration(hTimeout),
+			MaxAttempts: hMaxAttempts,
+			Keywords:    keywords,
+		})
+
+		jobs = append(jobs, hj)
 	}
 
-	if err := rows.Err(); err != nil {
-		return []monitor.RunnableCheck{}, fmt.Errorf("%s: rows iteration error: %w", op, err)
+	if err := httpRows.Err(); err != nil {
+		return []monitor.CheckJob{}, fmt.Errorf("%s: http configs iteration error: %w", op, err)
 	}
 
-	return checks, nil
+	return jobs, nil
 }
 
-func (s *Storage) SaveCheckResult(ctx context.Context, r monitor.MonitorCheckResult) error {
+func (s *Storage) SaveCheckResult(ctx context.Context, r monitor.CheckResult) error {
 	const op = "storage.sqlite.SaveCheckResult"
 
+	// check_results keys the config by type: exactly one of ping/http is set
+	// (enforced by a table CHECK). CheckType tells us which column owns ConfigID.
+	var pingID, httpID uuid.NullUUID
+	switch r.CheckType {
+	case monitor.CheckPing:
+		pingID = uuid.NullUUID{UUID: r.ConfigID, Valid: true}
+	case monitor.CheckHTTP:
+		httpID = uuid.NullUUID{UUID: r.ConfigID, Valid: true}
+	default:
+		return fmt.Errorf("%s: cannot persist result for check type %q", op, r.CheckType)
+	}
+
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO monitor_check_results (
-			id, 
-			monitor_id, 
-			config_id,
+		`INSERT INTO check_results (
+			id,
+			monitor_id,
+			ping_config_id,
+			http_config_id,
 			status,
 			status_code,
 			response_time_ns,
 			checked_at,
-			error_message,
-			screenshot_path
-		) 
+			error_message
+		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ID,
 		r.MonitorID,
-		r.ConfigID,
+		pingID,
+		httpID,
 		r.Status,
 		r.StatusCode,
 		r.ResponseTime.Nanoseconds(),
 		r.CheckedAt,
 		r.Error,
-		r.ScreenshotPath,
 	)
 	if err != nil {
 		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
@@ -436,5 +623,121 @@ func (s *Storage) SaveCheckResult(ctx context.Context, r monitor.MonitorCheckRes
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
+	return nil
+}
+
+func (s *Storage) UpdatePingConfig(ctx context.Context, cfg monitor.PingConfig) error {
+	const op = "storage.sqlite.UpdatePingConfig"
+
+	res, err := s.db.ExecContext(
+		ctx,
+		`UPDATE ping_configs SET
+			port = ?,
+			is_enabled = ?,
+			interval = ?,
+			timeout = ?,
+			max_attempts = ?
+		WHERE id = ?`,
+		cfg.Port, cfg.IsEnabled, cfg.Interval.Seconds(),
+		cfg.Timeout.Seconds(), cfg.MaxAttempts.Count(), cfg.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("%s: updating ping config error: %w", op, err)
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: updating ping config error: %w", op, err)
+	}
+	if count != 1 {
+		return monitor.ErrPingConfigNotFound
+	}
+
+	return nil
+}
+
+func (s *Storage) UpdateHTTPConfig(ctx context.Context, cfg monitor.HTTPConfig) error {
+	const op = "storage.sqlite.UpdateHTTPConfig"
+
+	keywords, err := json.Marshal(cfg.Keywords)
+	if err != nil {
+		return fmt.Errorf("%s: updating http config error: %w", op, err)
+	}
+
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE http_configs SET
+			scheme = ?, path = ?, method = ?,
+			is_enabled = ?, interval = ?,
+			timeout = ?, max_attempts = ?, keywords = ?
+		WHERE id = ?`,
+		string(cfg.Scheme), cfg.Path.String(),
+		string(cfg.Method), cfg.IsEnabled, cfg.Interval.Seconds(),
+		cfg.Timeout.Seconds(), cfg.MaxAttempts.Count(), string(keywords), cfg.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("%s: updating http config error: %w", op, err)
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: updating http config error: %w", op, err)
+	}
+	if count != 1 {
+		return monitor.ErrHTTPConfigNotFound
+	}
+
+	return nil
+}
+
+func (s *Storage) AddHTTPConfig(ctx context.Context, cfg monitor.HTTPConfig) error {
+	const op = "storage.sqlite.AddHTTPConfig"
+
+	keywords, err := json.Marshal(cfg.Keywords)
+	if err != nil {
+		return fmt.Errorf("%s: adding http config error: %w", op, err)
+	}
+
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO http_configs (
+			id, monitor_id, scheme, path,
+			method, is_enabled, interval,
+			timeout, max_attempts, keywords
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		cfg.ID, cfg.MonitorID, string(cfg.Scheme), cfg.Path.String(),
+		string(cfg.Method), cfg.IsEnabled, cfg.Interval.Seconds(),
+		cfg.Timeout.Seconds(), cfg.MaxAttempts.Count(),
+		string(keywords),
+	)
+
+	if err != nil {
+		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			return fmt.Errorf("%s: %w", op, monitor.ErrHTTPConfigExists)
+		}
+		return fmt.Errorf("%s: inserting http config error: %w", op, err)
+	}
+
+	return nil
+}
+
+func (s *Storage) RemoveHTTPConfig(ctx context.Context, configID uuid.UUID) error {
+	const op = "storage.sqlite.RemoveHTTPConfig"
+
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM http_configs WHERE id = ?`,
+		configID,
+	)
+	if err != nil {
+		return fmt.Errorf("%s: deleting http config error: %w", op, err)
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: deleting http config error: %w", op, err)
+	}
+
+	if count != 1 {
+		return monitor.ErrHTTPConfigNotFound
+	}
 	return nil
 }

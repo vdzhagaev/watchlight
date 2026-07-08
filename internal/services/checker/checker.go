@@ -6,7 +6,8 @@ import (
 )
 
 type CheckRequest struct {
-	URL      string
+	Target   string
+	Method   string
 	Timeout  time.Duration
 	Keywords []string
 }

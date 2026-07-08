@@ -14,17 +14,13 @@ type Storage struct {
 func New(path string) (*Storage, error) {
 	const op = "storage.sqlite.New"
 
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open(
+		"sqlite",
+		path+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)",
+	)
+
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-	_, err = db.Exec("PRAGMA journal_mode=WAL")
-	if err != nil {
-		return nil, err
-	}
-	_, err = db.Exec("PRAGMA foreign_keys = ON")
-	if err != nil {
-		return nil, err
 	}
 
 	if err := migrate(db); err != nil {
