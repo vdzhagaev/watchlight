@@ -2,20 +2,23 @@
 
 A lightweight uptime monitoring service in Go.
 
-**Status:** monitor CRUD, SQLite storage, the checker, and the background
-scheduler are shipped (through `v0.4`). Migrations (`v0.5`) are next. Not
-production-ready.
+**Status:** monitor CRUD, SQLite storage, the checker, the background
+scheduler, and the host remodel are shipped (through `v0.5`). Live monitoring
+(`v0.6`) is next. Not production-ready.
 
 ## Overview
 
-`watchlight` periodically probes configured endpoints and tracks their availability.
-Each monitor can have multiple check configurations (HTTP, ping, headless browser),
-runs on its own interval, and produces timestamped results. Incidents and alerting
-land in later phases — see [ROADMAP](ROADMAP.md).
+`watchlight` periodically probes configured hosts and tracks their availability.
+A monitor **is** a host (FQDN): it has one intrinsic ping check (TCP
+reachability, enabled by default, toggleable, never removable) and a per-path
+collection of HTTP checks, each on its own interval, producing timestamped
+results. Incidents and alerting land in later phases — see [ROADMAP](ROADMAP.md).
 
 ## Current scope
 
 - HTTP API for managing monitors (`POST`, `GET`, `GET /{id}`, `PATCH /{id}`, `DELETE /{id}`)
+- HTTP API for the config sub-resources: `PATCH /{id}/ping`, and
+  `POST` / `PATCH /{configID}` / `DELETE /{configID}` under `/{id}/http-checks`
 - SQLite storage backend (the single persistence layer), wired into `cmd/server`
 - HTTP and ping checkers; results persisted with a per-check status
 - Background scheduler running enabled check configs on their intervals,
@@ -43,16 +46,30 @@ curl localhost:8082/monitors
 # fetch one (use an id returned by list/create)
 curl localhost:8082/monitors/<monitor-id>
 
-# create a monitor
+# create a monitor: a host, its intrinsic ping check, and per-path HTTP checks.
+# "ping" and "http_checks" are optional; omitting "ping" still yields a default
+# ping check on port 443.
 curl -X POST localhost:8082/monitors \
   -H 'content-type: application/json' \
   -d '{
-    "url": "https://example.com",
+    "host": "example.com",
     "name": "Example",
-    "checks": [
-      {"type": "http", "interval": 60, "timeout": 5, "max_attempts": 3}
+    "ping": {"port": 443, "interval": 60},
+    "http_checks": [
+      {"scheme": "https", "path": "/", "method": "HEAD", "interval": 60, "timeout": 5, "max_attempts": 3},
+      {"scheme": "https", "path": "/health", "method": "GET", "keywords": ["ok"], "interval": 30}
     ]
   }'
+
+# add an HTTP check to an existing monitor
+curl -X POST localhost:8082/monitors/<monitor-id>/http-checks \
+  -H 'content-type: application/json' \
+  -d '{"scheme": "https", "path": "/status", "method": "GET"}'
+
+# disable the ping check
+curl -X PATCH localhost:8082/monitors/<monitor-id>/ping \
+  -H 'content-type: application/json' \
+  -d '{"is_enabled": false}'
 ```
 
 ## Architecture
@@ -80,6 +97,9 @@ Design notes:
   backends import `monitor` and satisfy it structurally.
 - Defaults (`IsEnabled=true`, `Status=Unknown`) live in `Service.Create`,
   not in transport or persistence layers.
+- `Monitor` is the aggregate root: ping and HTTP checks are edited through it
+  (which enforces the invariants), then persisted by narrow, single-config
+  repository commands rather than a whole-aggregate save.
 
 ## Configuration
 
