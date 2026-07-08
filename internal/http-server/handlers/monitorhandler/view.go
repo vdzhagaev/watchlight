@@ -37,20 +37,24 @@ type monitorView struct {
 	HTTPChecks []httpCheckView `json:"http_checks"`
 }
 
+func toHTTPCheckView(c monitor.HTTPConfig) httpCheckView {
+	return httpCheckView{
+		ID:          c.ID.String(),
+		Scheme:      string(c.Scheme),
+		Path:        c.Path.String(),
+		Method:      string(c.Method),
+		IsEnabled:   c.IsEnabled,
+		Interval:    c.Interval.Seconds(),
+		Timeout:     c.Timeout.Seconds(),
+		MaxAttempts: c.MaxAttempts.Count(),
+		Keywords:    c.Keywords,
+	}
+}
+
 func toMonitorView(m monitor.Monitor) monitorView {
 	checks := make([]httpCheckView, 0, len(m.HTTPConfigs))
 	for _, c := range m.HTTPConfigs {
-		checks = append(checks, httpCheckView{
-			ID:          c.ID.String(),
-			Scheme:      string(c.Scheme),
-			Path:        c.Path.String(),
-			Method:      string(c.Method),
-			IsEnabled:   c.IsEnabled,
-			Interval:    c.Interval.Seconds(),
-			Timeout:     c.Timeout.Seconds(),
-			MaxAttempts: c.MaxAttempts.Count(),
-			Keywords:    c.Keywords,
-		})
+		checks = append(checks, toHTTPCheckView(c))
 	}
 
 	return monitorView{

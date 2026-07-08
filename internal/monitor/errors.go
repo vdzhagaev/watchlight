@@ -24,6 +24,11 @@ var (
 
 	ErrInvalidPort        = fmt.Errorf("%w: invalid port for ping config", ErrValidation)
 	ErrKeywordsRequireGET = fmt.Errorf("%w: keywords can not passed with the HEAD method", ErrValidation)
+
+	ErrHTTPConfigNotFound = errors.New("http config not found")
+	ErrPingConfigNotFound = errors.New("ping config not found")
+
+	ErrHTTPConfigExists = errors.New("http config already exists")
 )
 
 func ErrMethodNotAllowed(method string) error {

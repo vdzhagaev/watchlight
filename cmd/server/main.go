@@ -100,6 +100,14 @@ func run() error {
 		r.Delete("/{monitorID}", mHandler.Delete)
 		r.Get("/", mHandler.List)
 		r.Get("/{monitorID}", mHandler.Find)
+
+		r.Patch("/{monitorID}/ping", mHandler.UpdatePing)
+
+		r.Route("/{monitorID}/http-checks", func(r chi.Router) {
+			r.Post("/", mHandler.AddHTTPCheck)
+			r.Patch("/{configID}", mHandler.UpdateHTTPCheck)
+			r.Delete("/{configID}", mHandler.RemoveHTTPCheck)
+		})
 	})
 
 	// TODO: HTTP Server

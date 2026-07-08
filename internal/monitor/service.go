@@ -81,3 +81,65 @@ func (svc *Service) HandleCheckResult(ctx context.Context, r CheckResultInput) e
 		FoundKeywords: r.FoundKeywords,
 	})
 }
+
+func (svc *Service) AddHTTPCheck(ctx context.Context, monitorID uuid.UUID, in CreateHTTPConfigInput) (HTTPConfig, error) {
+	m, err := svc.repo.GetMonitor(ctx, monitorID)
+	if err != nil {
+		return HTTPConfig{}, err
+	}
+
+	hc, err := m.AddHTTPConfig(in)
+	if err != nil {
+		return HTTPConfig{}, err
+	}
+
+	if err := svc.repo.AddHTTPConfig(ctx, hc); err != nil {
+		return HTTPConfig{}, err
+	}
+	return hc, nil
+}
+
+func (svc *Service) UpdateHTTPCheck(ctx context.Context, monitorID, configID uuid.UUID, in UpdateHTTPConfigInput) error {
+	m, err := svc.repo.GetMonitor(ctx, monitorID)
+	if err != nil {
+		return err
+	}
+
+	hc, err := m.UpdateHTTPConfig(configID, in)
+	if err != nil {
+		return err
+	}
+
+	if err := svc.repo.UpdateHTTPConfig(ctx, hc); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (svc *Service) RemoveHTTPCheck(ctx context.Context, monitorID, configID uuid.UUID) error {
+	m, err := svc.repo.GetMonitor(ctx, monitorID)
+	if err != nil {
+		return err
+	}
+	if err := m.RemoveHTTPConfig(configID); err != nil {
+		return err
+	}
+	return svc.repo.RemoveHTTPConfig(ctx, configID)
+}
+
+func (svc *Service) UpdatePing(ctx context.Context, monitorID uuid.UUID, in UpdatePingConfigInput) error {
+	m, err := svc.repo.GetMonitor(ctx, monitorID)
+	if err != nil {
+		return err
+	}
+
+	err = m.UpdatePingConfig(in)
+	if err != nil {
+		return err
+	}
+
+	if err := svc.repo.UpdatePingConfig(ctx, m.PingConfig); err != nil {
+		return err
+	}
+	return nil
+}

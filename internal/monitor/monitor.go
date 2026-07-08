@@ -1,6 +1,8 @@
 package monitor
 
 import (
+	"slices"
+
 	"github.com/google/uuid"
 )
 
@@ -87,4 +89,67 @@ func enabledOrDefault(p *bool) bool {
 		return true
 	}
 	return *p
+}
+
+func (m *Monitor) UpdatePingConfig(in UpdatePingConfigInput) error {
+	pingConfig, err := m.PingConfig.Update(in)
+	if err != nil {
+		return err
+	}
+	m.PingConfig = pingConfig
+	return nil
+}
+
+func (m *Monitor) UpdateHTTPConfig(configID uuid.UUID, in UpdateHTTPConfigInput) (HTTPConfig, error) {
+	index := slices.IndexFunc(m.HTTPConfigs, func(c HTTPConfig) bool {
+		return c.ID == configID
+	})
+	if index == -1 {
+		return HTTPConfig{}, ErrHTTPConfigNotFound
+	}
+
+	hc := m.HTTPConfigs[index]
+
+	updated, err := hc.Update(in)
+	if err != nil {
+		return HTTPConfig{}, err
+	}
+	dup := slices.IndexFunc(m.HTTPConfigs, func(c HTTPConfig) bool {
+		return c.ID != updated.ID && c.Scheme == updated.Scheme && c.Path == updated.Path && c.Method == updated.Method
+	})
+	if dup != -1 {
+		return HTTPConfig{}, ErrHTTPConfigExists
+	}
+	m.HTTPConfigs[index] = updated
+	return updated, nil
+}
+
+func (m *Monitor) AddHTTPConfig(in CreateHTTPConfigInput) (HTTPConfig, error) {
+	hc, err := NewHTTPConfig(m.ID, in)
+
+	if err != nil {
+		return HTTPConfig{}, err
+	}
+
+	index := slices.IndexFunc(m.HTTPConfigs, func(c HTTPConfig) bool {
+		return c.Scheme == hc.Scheme && c.Path == hc.Path && c.Method == hc.Method
+	})
+
+	if index != -1 {
+		return HTTPConfig{}, ErrHTTPConfigExists
+	}
+
+	m.HTTPConfigs = append(m.HTTPConfigs, hc)
+	return hc, nil
+}
+
+func (m *Monitor) RemoveHTTPConfig(configID uuid.UUID) error {
+	index := slices.IndexFunc(m.HTTPConfigs, func(c HTTPConfig) bool {
+		return c.ID == configID
+	})
+	if index == -1 {
+		return ErrHTTPConfigNotFound
+	}
+	m.HTTPConfigs = slices.Delete(m.HTTPConfigs, index, index+1)
+	return nil
 }

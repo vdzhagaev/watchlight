@@ -220,7 +220,7 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 			interval, timeout, max_attempts, keywords
 		FROM http_configs
 		WHERE monitor_id = ?
-		ORDER BY monitor_id
+		ORDER BY id
 	`
 
 	rows, err := s.db.QueryContext(ctx, httpConfigsQuery, id)
@@ -369,7 +369,7 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 			id, monitor_id, scheme, path, method, is_enabled,
 			interval, timeout, max_attempts, keywords
 		FROM http_configs
-		ORDER BY monitor_id
+		ORDER BY monitor_id, id
 	`
 	httpConfigRows, err := s.db.QueryContext(ctx, allHttpConfQuery)
 	if err != nil {
@@ -399,7 +399,10 @@ func (s *Storage) GetMonitorList(ctx context.Context) ([]monitor.Monitor, error)
 			return nil, fmt.Errorf("%s: scan http config: %w", op, err)
 		}
 
-		m, _ := monitors[hMonitorID]
+		m, ok := monitors[hMonitorID]
+		if !ok {
+			return nil, fmt.Errorf("%s: http config %s references unknown monitor %s", op, hID, hMonitorID)
+		}
 
 		keywords := make([]string, 0)
 
@@ -450,7 +453,6 @@ func (s *Storage) ListEnabledCheckConfigs(ctx context.Context) ([]monitor.CheckJ
 		FROM ping_configs AS p
 		JOIN monitors AS m ON m.id = p.monitor_id
 		WHERE p.is_enabled = 1
-		ORDER BY p.monitor_id
 	`
 
 	pingRows, err := s.db.QueryContext(ctx, allPingConfigsQuery)
@@ -510,7 +512,6 @@ func (s *Storage) ListEnabledCheckConfigs(ctx context.Context) ([]monitor.CheckJ
 		FROM http_configs as h
 		JOIN monitors as m ON m.id = h.monitor_id
 		WHERE h.is_enabled = 1
-		ORDER BY monitor_id
 	`
 
 	httpRows, err := s.db.QueryContext(ctx, allHttpConfQuery)
@@ -622,5 +623,121 @@ func (s *Storage) SaveCheckResult(ctx context.Context, r monitor.CheckResult) er
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
+	return nil
+}
+
+func (s *Storage) UpdatePingConfig(ctx context.Context, cfg monitor.PingConfig) error {
+	const op = "storage.sqlite.UpdatePingConfig"
+
+	res, err := s.db.ExecContext(
+		ctx,
+		`UPDATE ping_configs SET
+			port = ?,
+			is_enabled = ?,
+			interval = ?,
+			timeout = ?,
+			max_attempts = ?
+		WHERE id = ?`,
+		cfg.Port, cfg.IsEnabled, cfg.Interval.Seconds(),
+		cfg.Timeout.Seconds(), cfg.MaxAttempts.Count(), cfg.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("%s: updating ping config error: %w", op, err)
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: updating ping config error: %w", op, err)
+	}
+	if count != 1 {
+		return monitor.ErrPingConfigNotFound
+	}
+
+	return nil
+}
+
+func (s *Storage) UpdateHTTPConfig(ctx context.Context, cfg monitor.HTTPConfig) error {
+	const op = "storage.sqlite.UpdateHTTPConfig"
+
+	keywords, err := json.Marshal(cfg.Keywords)
+	if err != nil {
+		return fmt.Errorf("%s: updating http config error: %w", op, err)
+	}
+
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE http_configs SET
+			scheme = ?, path = ?, method = ?,
+			is_enabled = ?, interval = ?,
+			timeout = ?, max_attempts = ?, keywords = ?
+		WHERE id = ?`,
+		string(cfg.Scheme), cfg.Path.String(),
+		string(cfg.Method), cfg.IsEnabled, cfg.Interval.Seconds(),
+		cfg.Timeout.Seconds(), cfg.MaxAttempts.Count(), string(keywords), cfg.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("%s: updating http config error: %w", op, err)
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: updating http config error: %w", op, err)
+	}
+	if count != 1 {
+		return monitor.ErrHTTPConfigNotFound
+	}
+
+	return nil
+}
+
+func (s *Storage) AddHTTPConfig(ctx context.Context, cfg monitor.HTTPConfig) error {
+	const op = "storage.sqlite.AddHTTPConfig"
+
+	keywords, err := json.Marshal(cfg.Keywords)
+	if err != nil {
+		return fmt.Errorf("%s: adding http config error: %w", op, err)
+	}
+
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO http_configs (
+			id, monitor_id, scheme, path,
+			method, is_enabled, interval,
+			timeout, max_attempts, keywords
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		cfg.ID, cfg.MonitorID, string(cfg.Scheme), cfg.Path.String(),
+		string(cfg.Method), cfg.IsEnabled, cfg.Interval.Seconds(),
+		cfg.Timeout.Seconds(), cfg.MaxAttempts.Count(),
+		string(keywords),
+	)
+
+	if err != nil {
+		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			return fmt.Errorf("%s: %w", op, monitor.ErrHTTPConfigExists)
+		}
+		return fmt.Errorf("%s: inserting http config error: %w", op, err)
+	}
+
+	return nil
+}
+
+func (s *Storage) RemoveHTTPConfig(ctx context.Context, configID uuid.UUID) error {
+	const op = "storage.sqlite.RemoveHTTPConfig"
+
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM http_configs WHERE id = ?`,
+		configID,
+	)
+	if err != nil {
+		return fmt.Errorf("%s: deleting http config error: %w", op, err)
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: deleting http config error: %w", op, err)
+	}
+
+	if count != 1 {
+		return monitor.ErrHTTPConfigNotFound
+	}
 	return nil
 }
