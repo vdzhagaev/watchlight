@@ -34,6 +34,9 @@ These are settled; changing them requires a rethink.
   there is a single persistence layer and no `storage.type` switch.
 - Raw check facts cross the scheduler→domain seam as a `CheckResultInput`
   DTO; the domain derives status and mints the result ID.
+- **One API surface.** The UI and external automations are both consumers of
+  the same HTTP API; they differ only in authentication (session for the UI,
+  API key for machines). No separate backend-for-frontend.
 
 ## Phases
 
@@ -164,57 +167,120 @@ configuration changes, and each monitor carries a derived status.
 scheduler checks without a restart; a failing check moves the monitor to
 `down` and a recovery moves it back to `up`; current status is queryable.
 
-### v0.7 — Incidents + notifications [planned]
+**Follow-ups before v0.7** (small, on the now-settled core):
 
-Turn status changes into tracked incidents and notifications.
+- Idiomatic-cleanup pass: tighten package layout and conventions toward a more
+  professional shape. Hand-written SQL stays — no `sqlc`. No behaviour change;
+  done once the v0.6 core is stable.
+- Keyword `MustContain` / `MustNotContain` on HTTP checks (#30): replace the
+  single implicit keyword list with two policy lists; the checker stays
+  fact-only (`FoundKeywords`), the verdict lives in the Service. The
+  keyword-exclude work (#31) rides along in the same bucket.
 
-- `Incident` entity: `id`, `monitor_id`, `started_at`, `ended_at`,
-  `reason`, `last_result_id`
+### v0.7 — Incidents + notify seam [planned]
+
+Turn status transitions into tracked incidents, and lay the notification seam
+without building the routing subsystem yet.
+
+**Incidents**
+
+- `Incident` entity keyed per check: `id`, `monitor_id`, `check_id`,
+  `started_at`, `ended_at`, `reason`, `last_result_id`
+- Single-open invariant: at most one open incident per check. A `down`
+  transition opens one only if none is open; further failures update
+  `last_result_id`; recovery closes it. Enforced in the domain, backed by a
+  partial unique index in SQLite.
 - `IncidentRepository` on SQLite
-- Rule engine: a `down` transition opens an incident; recovery closes it
-- `internal/notifier` with a `Notifier` interface; Slack implementation via
-  incoming webhook (config scaffolded as `SLACK_WEBHOOK_URL`)
-- Wire notifier into the scheduler pipeline (the second consumer of the
-  status transition)
 - `GET /monitors/{id}/incidents` endpoint
 
-**Exit criteria:** a failing monitor opens an incident and posts to Slack;
-recovery closes the incident and posts a second message.
+**Notify seam**
 
-### v0.8 — Migrations [planned]
+- `Notifier` interface with a single log-only implementation
+- Fired on incident open/close from the application layer (the second consumer
+  of the status transition, after persistence)
+- No channels, routing, or per-monitor settings yet — a dumb global sink that
+  proves the `incident → notify` wiring end-to-end
 
-Build a hand-rolled migration mechanism (no third-party tool) so the
-SQLite schema can evolve without "delete `storage.db`" workarounds. The
-goal is to understand the moving parts of a migration system before
-reaching for a library in a future project.
+**Exit criteria:** a failing check opens exactly one incident and logs it;
+continued failure does not open duplicates; recovery closes the incident and
+logs it; incidents are queryable per monitor.
 
-**Scope:**
+### v0.8 — Users / auth [planned]
 
-- `migrations/` directory with numbered SQL files (e.g. `0001_initial.sql`)
-- Schema-tracking table (e.g. `_migrations` with `id`, `name`, `applied_at`)
-  created automatically on first run
-- Migrator on startup: read applied set, run pending migrations in
-  numeric order, each inside its own transaction, stop on first failure
-- Convert the current SQLite schema into `0001_initial.sql`
-- README section explaining how to add a new migration
+Introduce accounts so settings can be scoped to a user — the prerequisite for
+notification routing and multi-user self-hosting.
 
-**Deliberately out of scope:**
+- User entity, credential storage, session-based auth for the human-facing API
+- Account scope on the data model (monitors and settings belong to a user)
+- Per-user settings surface
+- Session middleware over the existing handlers (no separate BFF)
 
-- Down-migrations / rollback
-- Concurrent-safe locking (single-node assumption holds)
-- Checksums / drift detection
+**Exit criteria:** the API requires authentication; a user sees only their own
+monitors; per-user settings persist.
 
-**Exit criteria:** schema changes ship as new migration files instead of
-README notes; running the server against an existing `storage.db` applies
-any pending migrations cleanly on startup.
+### v0.9 — Notifications [planned]
 
-## Beyond v0.6
+Build the notification subsystem on top of the v0.7 seam and v0.8 accounts.
+
+- Notifier definitions as their own account-level entities (transport config:
+  Slack, email, Telegram), shared and referenced by id
+- Per-monitor routing: which notifiers a monitor uses, and which of its checks
+  they listen to
+- Global defaults with per-monitor override: a `base + override` merge
+  (add/remove delta) — e.g. global Slack+email, a monitor drops email and adds
+  Telegram
+- Real channel implementations behind the `Notifier` interface
+
+**Exit criteria:** an incident routes to the configured channels; a monitor's
+override changes delivery relative to the global default; at least one real
+channel (Slack) delivers.
+
+### v0.10 — API surface [planned]
+
+Open the API to non-UI consumers and pin the contract.
+
+- OpenAPI specification covering the full surface (monitors, incidents,
+  notifications, settings)
+- API keys as a second auth mechanism (machine auth) alongside sessions
+- One handler set, two auth middlewares (session for the UI, API key for
+  automations) — the UI and external programs share the same API
+
+**Exit criteria:** the spec matches the implemented endpoints; an automation
+authenticates with an API key and drives monitors; the spec is usable to
+generate a client.
+
+### v0.11 — Ops readiness [planned]
+
+Harden the tool for real self-hosted operation before v1.
+
+- Metrics + a Prometheus endpoint
+- Benchmark tests and a load simulation over the checker/scheduler
+- Hand-rolled migration mechanism (numbered SQL files, a `_migrations`
+  tracking table, run-pending-on-startup, each migration in its own
+  transaction) so the schema evolves without deleting `storage.db` — no
+  third-party tool, single-node assumption holds
+- General polish
+
+**Exit criteria:** the server exposes metrics; schema changes ship as
+migration files applied cleanly on startup; a load run produces a baseline.
+
+### v1.0 — Ship [planned]
+
+A complete, self-hostable tool.
+
+- Self-host packaging and a Docker image
+- Web UI over the OpenAPI surface
+- Docs for running it
+
+**Exit criteria:** a fresh self-host via Docker yields a working install with
+a UI, auth, monitors, incidents, and notifications.
+
+## Beyond v1
 
 Possible directions, not committed to:
 
-- Additional notifier channels (email, PagerDuty, Telegram)
+- Monitor grouping with group-level settings (close to or after v1)
+- Additional notifier channels (PagerDuty, Discord, generic webhooks)
 - Multi-node support with leader election
-- Web UI
-- Public authentication (API keys, OIDC)
-- Historical metrics / dashboards
 - Multi-region probing
+- Historical metrics / dashboards beyond the v0.11 baseline
