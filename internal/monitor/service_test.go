@@ -18,11 +18,12 @@ import (
 // delegates to the Repository and propagates results/errors. The store is a
 // generated mock, so we script exactly what the repository returns.
 
-func newSvc(t *testing.T) (*monitor.Service, *mocks.MockRepository) {
+func newSvc(t *testing.T) (*monitor.Service, *mocks.MockRepository, chan monitor.ConfigChangeEvent) {
 	t.Helper()
 	repo := mocks.NewMockRepository(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return monitor.NewService(repo, log), repo
+	eventsChan := make(chan monitor.ConfigChangeEvent, 16)
+	return monitor.NewService(repo, log, eventsChan), repo, eventsChan
 }
 
 func validInput() monitor.CreateMonitorInput {
@@ -37,7 +38,7 @@ func validInput() monitor.CreateMonitorInput {
 
 // Create builds the monitor via New() and forwards it to the repository.
 func TestService_Create_DelegatesToRepo(t *testing.T) {
-	svc, repo := newSvc(t)
+	svc, repo, _ := newSvc(t)
 
 	repo.EXPECT().
 		CreateMonitor(mock.Anything, mock.AnythingOfType("monitor.Monitor")).
@@ -58,7 +59,7 @@ func TestService_Create_DelegatesToRepo(t *testing.T) {
 
 // An error from the repository is propagated unchanged.
 func TestService_Create_PropagatesRepoError(t *testing.T) {
-	svc, repo := newSvc(t)
+	svc, repo, _ := newSvc(t)
 
 	repo.EXPECT().
 		CreateMonitor(mock.Anything, mock.Anything).
@@ -75,7 +76,7 @@ func TestService_Create_PropagatesRepoError(t *testing.T) {
 // no expectations on the mock: if Create called the repo, the generated mock
 // would panic ("no return value specified for CreateMonitor") and fail the test.
 func TestService_Create_InvalidInput_SkipsRepo(t *testing.T) {
-	svc, _ := newSvc(t)
+	svc, _, _ := newSvc(t)
 
 	_, err := svc.Create(context.Background(), monitor.CreateMonitorInput{})
 	if !errors.Is(err, monitor.ErrMonitorEmptyName) {
@@ -84,7 +85,7 @@ func TestService_Create_InvalidInput_SkipsRepo(t *testing.T) {
 }
 
 func TestService_Get_Propagates(t *testing.T) {
-	svc, repo := newSvc(t)
+	svc, repo, _ := newSvc(t)
 	id := uuid.New()
 
 	repo.EXPECT().GetMonitor(mock.Anything, id).
@@ -98,7 +99,7 @@ func TestService_Get_Propagates(t *testing.T) {
 }
 
 func TestService_Update_Propagates(t *testing.T) {
-	svc, repo := newSvc(t)
+	svc, repo, _ := newSvc(t)
 	id := uuid.New()
 	name := "new"
 
@@ -114,7 +115,7 @@ func TestService_Update_Propagates(t *testing.T) {
 }
 
 func TestService_Delete_Propagates(t *testing.T) {
-	svc, repo := newSvc(t)
+	svc, repo, _ := newSvc(t)
 	id := uuid.New()
 
 	repo.EXPECT().DeleteMonitor(mock.Anything, id).
@@ -131,7 +132,7 @@ func TestService_Delete_Propagates(t *testing.T) {
 // fresh, non-nil id, so two results built from the *same* input still persist
 // as distinct rows instead of colliding on UNIQUE(id).
 func TestService_HandleCheckResult_MintsFreshID(t *testing.T) {
-	svc, repo := newSvc(t)
+	svc, repo, _ := newSvc(t)
 
 	var saved []monitor.CheckResult
 	repo.EXPECT().
@@ -176,7 +177,7 @@ func TestService_HandleCheckResult_DerivesStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc, repo := newSvc(t)
+			svc, repo, _ := newSvc(t)
 
 			var got monitor.CheckResult
 			repo.EXPECT().
@@ -205,7 +206,7 @@ func TestService_HandleCheckResult_DerivesStatus(t *testing.T) {
 }
 
 func TestService_List_Delegates(t *testing.T) {
-	svc, repo := newSvc(t)
+	svc, repo, _ := newSvc(t)
 	want := []monitor.Monitor{{Name: "a"}, {Name: "b"}}
 
 	repo.EXPECT().GetMonitorList(mock.Anything).Return(want, nil).Once()

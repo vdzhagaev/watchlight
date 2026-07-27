@@ -33,7 +33,8 @@ type Scheduler struct {
 	wg             sync.WaitGroup
 	jobs           chan monitor.CheckJob
 	results        chan monitor.CheckResultInput
-	events         chan Event
+	events         chan Event                       // inner events
+	configEvents   <-chan monitor.ConfigChangeEvent // out
 	done           chan struct{}
 	dispatchCancel context.CancelFunc
 	checkCancel    context.CancelFunc
@@ -54,6 +55,7 @@ type Params struct {
 	Workers      int
 	Checkers     map[monitor.CheckType]checker.Checker
 	WriteTimeout time.Duration
+	ConfigEvents <-chan monitor.ConfigChangeEvent // out
 }
 
 type ConfigsGetter interface {
@@ -76,6 +78,7 @@ func New(p Params) *Scheduler {
 		results:      make(chan monitor.CheckResultInput, p.Workers),
 		events:       make(chan Event),
 		done:         make(chan struct{}),
+		configEvents: p.ConfigEvents,
 		getter:       p.Getter,
 		handler:      p.Handler,
 		workers:      p.Workers,
@@ -153,6 +156,12 @@ func (s *Scheduler) schedule(ctx context.Context) {
 				continue
 			}
 			s.applyEvent(ev)
+		case ev, ok := <-s.configEvents:
+			if !ok {
+				s.configEvents = nil
+				continue
+			}
+			s.applyConfigEvent(ev)
 		case <-ctx.Done():
 			return
 		}
@@ -180,6 +189,60 @@ func (s *Scheduler) applyEvent(ev Event) {
 	state.inFlight = false
 	state.nextDue = ev.CompletedAt.Add(state.checkJob.Base().Interval)
 	heap.Push(&s.heap, state)
+}
+
+func (s *Scheduler) applyConfigEvent(ev monitor.ConfigChangeEvent) {
+	configID := ev.Job.Base().ConfigID
+
+	switch ev.Type {
+
+	case monitor.EventCreated:
+		if state, ok := s.states[configID]; ok {
+			state.checkJob = ev.Job
+			if !state.inFlight {
+				heap.Fix(&s.heap, state.index)
+			}
+			return
+		}
+
+		state := &State{
+			checkJob: ev.Job,
+			nextDue:  time.Now(),
+			inFlight: false,
+		}
+		s.states[configID] = state
+		heap.Push(&s.heap, state)
+
+	case monitor.EventUpdated:
+		state, ok := s.states[configID]
+		if !ok {
+			s.applyConfigEvent(monitor.ConfigChangeEvent{
+				Type:      monitor.EventCreated,
+				MonitorID: ev.MonitorID,
+				Job:       ev.Job,
+			})
+			return
+		}
+
+		state.checkJob = ev.Job
+		state.nextDue = time.Now()
+
+		if !state.inFlight {
+			heap.Fix(&s.heap, state.index)
+		}
+
+	case monitor.EventDeleted:
+		state, ok := s.states[configID]
+		if !ok {
+			return
+		}
+
+		delete(s.states, configID)
+
+		if !state.inFlight {
+			heap.Remove(&s.heap, state.index)
+		}
+	}
 }
 
 func (s *Scheduler) buildEntries(ctx context.Context) (map[uuid.UUID]*State, error) {

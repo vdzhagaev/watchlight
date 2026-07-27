@@ -46,7 +46,7 @@ func (i Interval) Duration() time.Duration {
 	return i.duration
 }
 
-func (i Interval) Equals(i2 Interval) bool {
+func (i Interval) Equal(i2 Interval) bool {
 	return i.duration == i2.duration
 }
 
@@ -83,7 +83,7 @@ func (t Timeout) Duration() time.Duration {
 	return t.duration
 }
 
-func (t Timeout) Equals(t2 Timeout) bool {
+func (t Timeout) Equal(t2 Timeout) bool {
 	return t.duration == t2.duration
 }
 
@@ -160,7 +160,7 @@ func (h Host) String() string {
 	return h.value
 }
 
-func (h Host) Equals(o Host) bool {
+func (h Host) Equal(o Host) bool {
 	return h.value == o.value
 }
 
@@ -198,6 +198,6 @@ func (p Path) String() string {
 	return p.value
 }
 
-func (p Path) Equals(o Path) bool {
+func (p Path) Equal(o Path) bool {
 	return p.value == o.value
 }

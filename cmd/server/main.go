@@ -34,6 +34,9 @@ const (
 	envLocal = "local"
 	envDev   = "dev"
 	envProd  = "prod"
+
+	EVENTS_CHANNEL_SIZE = 100
+	SCHEDULER_WORKERS   = 50
 )
 
 func main() {
@@ -64,7 +67,10 @@ func run() error {
 
 	val := validator.New()
 
-	mService := monitor.NewService(storage, log)
+	eventsChan := make(chan monitor.ConfigChangeEvent, EVENTS_CHANNEL_SIZE)
+
+	mService := monitor.NewService(storage, log, eventsChan)
+
 	mHandler := monitorhandler.NewHandler(log, val, mService)
 
 	// TODO: Workers: Scheduler & Checker
@@ -72,12 +78,13 @@ func run() error {
 		Logger:  log,
 		Getter:  storage,
 		Handler: mService,
-		Workers: 50,
+		Workers: SCHEDULER_WORKERS,
 		Checkers: map[monitor.CheckType]checker.Checker{
 			monitor.CheckPing: checker.TCPChecker{},
 			monitor.CheckHTTP: checker.HTTPChecker{},
 		},
 		WriteTimeout: 5 * time.Second,
+		ConfigEvents: eventsChan,
 	})
 
 	err = scheduler.Start(appCtx)

@@ -153,3 +153,16 @@ func (m *Monitor) RemoveHTTPConfig(configID uuid.UUID) error {
 	m.HTTPConfigs = slices.Delete(m.HTTPConfigs, index, index+1)
 	return nil
 }
+
+func (m *Monitor) projectJobs() map[uuid.UUID]CheckJob {
+	jobs := make(map[uuid.UUID]CheckJob)
+	if m.PingConfig.IsEnabled {
+		jobs[m.PingConfig.ID] = m.PingConfig.ToJob(m.Host)
+	}
+	for _, hc := range m.HTTPConfigs {
+		if hc.IsEnabled {
+			jobs[hc.ID] = hc.ToJob(m.Host)
+		}
+	}
+	return jobs
+}
