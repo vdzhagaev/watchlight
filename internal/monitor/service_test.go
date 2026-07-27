@@ -103,6 +103,9 @@ func TestService_Update_Propagates(t *testing.T) {
 	id := uuid.New()
 	name := "new"
 
+	repo.EXPECT().GetMonitor(mock.Anything, id).
+		Return(monitor.Monitor{}, nil).
+		Once()
 	repo.EXPECT().
 		UpdateMonitor(mock.Anything, id, mock.AnythingOfType("monitor.UpdateMonitorInput")).
 		Return(monitor.ErrMonitorNotFound).
@@ -118,6 +121,9 @@ func TestService_Delete_Propagates(t *testing.T) {
 	svc, repo, _ := newSvc(t)
 	id := uuid.New()
 
+	repo.EXPECT().GetMonitor(mock.Anything, id).
+		Return(monitor.Monitor{}, nil).
+		Once()
 	repo.EXPECT().DeleteMonitor(mock.Anything, id).
 		Return(monitor.ErrMonitorNotFound).
 		Once()
@@ -146,7 +152,7 @@ func TestService_HandleCheckResult_MintsFreshID(t *testing.T) {
 		ConfigID:  uuid.New(),
 		Reachable: true,
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if err := svc.HandleCheckResult(context.Background(), in); err != nil {
 			t.Fatalf("HandleCheckResult #%d: %v", i, err)
 		}

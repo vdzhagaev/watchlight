@@ -34,20 +34,25 @@ func (svc *Service) Create(ctx context.Context, in CreateMonitorInput) (Monitor,
 }
 
 func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorInput) error {
+	m, err := svc.repo.GetMonitor(ctx, id)
+	if err != nil {
+		return err
+	}
+	before := m.projectJobs()
 
 	if in.Host != nil {
 		host, err := NewHost(*in.Host)
 		if err != nil {
 			return err
 		}
+		m.ChangeHost(host)
 		normalized := host.String()
 		in.Host = &normalized
 	}
-	m, err := svc.repo.GetMonitor(ctx, id)
-	if err != nil {
-		return err
+	if in.Name != nil {
+		m.Rename(*in.Name)
 	}
-	before := m.projectJobs()
+
 	err = svc.repo.UpdateMonitor(ctx, id, in)
 	if err != nil {
 		return err

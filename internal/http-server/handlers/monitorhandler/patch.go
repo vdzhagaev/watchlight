@@ -16,9 +16,8 @@ import (
 )
 
 type UpdateRequest struct {
-	Host   *string                `json:"host,omitempty" validate:"omitempty,hostname_rfc1123|ip"`
-	Name   *string                `json:"name,omitempty"`
-	Status *monitor.MonitorStatus `json:"status,omitempty" validate:"omitempty,oneof=up down unknown"`
+	Host *string `json:"host,omitempty" validate:"omitempty,hostname_rfc1123|ip"`
+	Name *string `json:"name,omitempty"`
 }
 
 func (h *MonitorHandler) Patch(w http.ResponseWriter, r *http.Request) {
@@ -57,9 +56,8 @@ func (h *MonitorHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mUpdateIn := monitor.UpdateMonitorInput{
-		Name:   req.Name,
-		Host:   req.Host,
-		Status: req.Status,
+		Name: req.Name,
+		Host: req.Host,
 	}
 
 	err = h.svc.Update(r.Context(), id, mUpdateIn)
