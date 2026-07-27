@@ -5,15 +5,17 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
+	"github.com/vdzhagaev/watchlight/internal/lib/logger/sl"
 )
 
 type Service struct {
-	repo Repository
-	log  *slog.Logger
+	repo       Repository
+	log        *slog.Logger
+	eventsChan chan ConfigChangeEvent
 }
 
-func NewService(repo Repository, log *slog.Logger) *Service {
-	return &Service{repo: repo, log: log}
+func NewService(repo Repository, log *slog.Logger, eventsChan chan ConfigChangeEvent) *Service {
+	return &Service{repo: repo, log: log, eventsChan: eventsChan}
 }
 
 func (svc *Service) Create(ctx context.Context, in CreateMonitorInput) (Monitor, error) {
@@ -25,11 +27,14 @@ func (svc *Service) Create(ctx context.Context, in CreateMonitorInput) (Monitor,
 	if err != nil {
 		return Monitor{}, err
 	}
+	after := m.projectJobs()
+	svc.syncScheduler(ctx, nil, after)
 
 	return m, nil
 }
 
 func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorInput) error {
+
 	if in.Host != nil {
 		host, err := NewHost(*in.Host)
 		if err != nil {
@@ -38,7 +43,18 @@ func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorIn
 		normalized := host.String()
 		in.Host = &normalized
 	}
-	return svc.repo.UpdateMonitor(ctx, id, in)
+	m, err := svc.repo.GetMonitor(ctx, id)
+	if err != nil {
+		return err
+	}
+	before := m.projectJobs()
+	err = svc.repo.UpdateMonitor(ctx, id, in)
+	if err != nil {
+		return err
+	}
+	after := m.projectJobs()
+	svc.syncScheduler(ctx, before, after)
+	return nil
 }
 
 func (svc *Service) Get(ctx context.Context, id uuid.UUID) (Monitor, error) {
@@ -50,7 +66,16 @@ func (svc *Service) List(ctx context.Context) ([]Monitor, error) {
 }
 
 func (svc *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	return svc.repo.DeleteMonitor(ctx, id)
+	m, err := svc.repo.GetMonitor(ctx, id)
+	if err != nil {
+		return err
+	}
+	err = svc.repo.DeleteMonitor(ctx, id)
+	if err != nil {
+		return err
+	}
+	svc.syncScheduler(ctx, m.projectJobs(), nil)
+	return nil
 }
 
 func (svc *Service) HandleCheckResult(ctx context.Context, r CheckResultInput) error {
@@ -87,6 +112,7 @@ func (svc *Service) AddHTTPCheck(ctx context.Context, monitorID uuid.UUID, in Cr
 	if err != nil {
 		return HTTPConfig{}, err
 	}
+	before := m.projectJobs()
 
 	hc, err := m.AddHTTPConfig(in)
 	if err != nil {
@@ -96,6 +122,11 @@ func (svc *Service) AddHTTPCheck(ctx context.Context, monitorID uuid.UUID, in Cr
 	if err := svc.repo.AddHTTPConfig(ctx, hc); err != nil {
 		return HTTPConfig{}, err
 	}
+
+	after := m.projectJobs()
+
+	svc.syncScheduler(ctx, before, after)
+
 	return hc, nil
 }
 
@@ -105,6 +136,8 @@ func (svc *Service) UpdateHTTPCheck(ctx context.Context, monitorID, configID uui
 		return err
 	}
 
+	before := m.projectJobs()
+
 	hc, err := m.UpdateHTTPConfig(configID, in)
 	if err != nil {
 		return err
@@ -113,6 +146,11 @@ func (svc *Service) UpdateHTTPCheck(ctx context.Context, monitorID, configID uui
 	if err := svc.repo.UpdateHTTPConfig(ctx, hc); err != nil {
 		return err
 	}
+
+	after := m.projectJobs()
+
+	svc.syncScheduler(ctx, before, after)
+
 	return nil
 }
 
@@ -121,10 +159,21 @@ func (svc *Service) RemoveHTTPCheck(ctx context.Context, monitorID, configID uui
 	if err != nil {
 		return err
 	}
+	before := m.projectJobs()
+
 	if err := m.RemoveHTTPConfig(configID); err != nil {
 		return err
 	}
-	return svc.repo.RemoveHTTPConfig(ctx, configID)
+
+	err = svc.repo.RemoveHTTPConfig(ctx, configID)
+	if err != nil {
+		return err
+	}
+
+	after := m.projectJobs()
+
+	svc.syncScheduler(ctx, before, after)
+	return nil
 }
 
 func (svc *Service) UpdatePing(ctx context.Context, monitorID uuid.UUID, in UpdatePingConfigInput) error {
@@ -132,6 +181,8 @@ func (svc *Service) UpdatePing(ctx context.Context, monitorID uuid.UUID, in Upda
 	if err != nil {
 		return err
 	}
+
+	before := m.projectJobs()
 
 	err = m.UpdatePingConfig(in)
 	if err != nil {
@@ -141,5 +192,32 @@ func (svc *Service) UpdatePing(ctx context.Context, monitorID uuid.UUID, in Upda
 	if err := svc.repo.UpdatePingConfig(ctx, m.PingConfig); err != nil {
 		return err
 	}
+
+	after := m.projectJobs()
+	svc.syncScheduler(ctx, before, after)
+
 	return nil
+}
+
+func (svc *Service) sendEvent(ctx context.Context, ev ConfigChangeEvent) {
+	select {
+	case svc.eventsChan <- ev:
+	case <-ctx.Done():
+		svc.log.Warn("failed to send config event, context cancelled", sl.Err(ctx.Err()))
+	}
+}
+
+func (svc *Service) syncScheduler(ctx context.Context, before, after map[uuid.UUID]CheckJob) {
+	for id, job := range after {
+		if _, ok := before[id]; ok && job.Equal(before[id]) {
+			svc.sendEvent(ctx, ConfigChangeEvent{Type: EventUpdated, Job: job})
+		} else {
+			svc.sendEvent(ctx, ConfigChangeEvent{Type: EventCreated, Job: job})
+		}
+	}
+	for id, job := range before {
+		if _, ok := after[id]; !ok {
+			svc.sendEvent(ctx, ConfigChangeEvent{Type: EventDeleted, Job: job})
+		}
+	}
 }

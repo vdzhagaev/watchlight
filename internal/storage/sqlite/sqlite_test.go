@@ -95,7 +95,7 @@ func TestStorage_Update_PartialKeepsOthers(t *testing.T) {
 	if updated.Name != newName {
 		t.Errorf("Name = %q, want %q", updated.Name, newName)
 	}
-	if !updated.Host.Equals(m.Host) {
+	if !updated.Host.Equal(m.Host) {
 		t.Errorf("Host changed: %q, want %q", updated.Host.String(), m.Host.String())
 	}
 	if updated.Status != m.Status {

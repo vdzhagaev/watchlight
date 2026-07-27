@@ -9,15 +9,18 @@ BINARY_NAME=watchlight
 HOST ?= example.com
 NAME ?= $(HOST)
 
-.PHONY: build run prepare fmt tidy seed watch
+.PHONY: build run prepare fmt tidy vet seed watch
 
-prepare: fmt tidy
+prepare: fmt tidy vet
 
 fmt:
 	go fmt ./...
 
 tidy:
 	go mod tidy
+
+vet:
+	go vet ./...
 
 build: prepare
 	mkdir -p bin

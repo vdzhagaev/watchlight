@@ -226,3 +226,18 @@ func (cfg HTTPConfig) Update(in UpdateHTTPConfigInput) (HTTPConfig, error) {
 	cfg.Keywords = keywords
 	return cfg, nil
 }
+
+func (hc HTTPConfig) ToJob(host Host) HTTPJob {
+	return NewHTTPJob(CreateHTTPJobInput{
+		MonitorID:   hc.MonitorID,
+		ConfigID:    hc.ID,
+		Scheme:      hc.Scheme,
+		Host:        host,
+		Path:        hc.Path,
+		Method:      hc.Method,
+		Interval:    hc.Interval.Duration(),
+		Timeout:     hc.Timeout.Duration(),
+		MaxAttempts: hc.MaxAttempts.Count(),
+		Keywords:    hc.Keywords,
+	})
+}

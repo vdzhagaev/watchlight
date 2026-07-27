@@ -142,3 +142,15 @@ func (cfg PingConfig) Update(in UpdatePingConfigInput) (PingConfig, error) {
 	cfg.MaxAttempts = maxAttempts
 	return cfg, nil
 }
+
+func (cfg PingConfig) ToJob(host Host) PingJob {
+	return NewPingJob(CreatePingJobInput{
+		MonitorID:   cfg.MonitorID,
+		ConfigID:    cfg.ID,
+		Host:        host,
+		Port:        cfg.Port,
+		Interval:    cfg.Interval.Duration(),
+		Timeout:     cfg.Timeout.Duration(),
+		MaxAttempts: cfg.MaxAttempts.Count(),
+	})
+}

@@ -88,10 +88,10 @@ func TestHost_Equals(t *testing.T) {
 	a := monitor.ReconstructHost("example.com")
 	b := monitor.ReconstructHost("example.com")
 	c := monitor.ReconstructHost("other.com")
-	if !a.Equals(b) {
+	if !a.Equal(b) {
 		t.Error("Equals: identical hosts should be equal")
 	}
-	if a.Equals(c) {
+	if a.Equal(c) {
 		t.Error("Equals: different hosts should not be equal")
 	}
 }
@@ -138,10 +138,10 @@ func TestPath_Equals(t *testing.T) {
 	a := monitor.ReconstructPath("/api")
 	b := monitor.ReconstructPath("/api")
 	c := monitor.ReconstructPath("/other")
-	if !a.Equals(b) {
+	if !a.Equal(b) {
 		t.Error("Equals: identical paths should be equal")
 	}
-	if a.Equals(c) {
+	if a.Equal(c) {
 		t.Error("Equals: different paths should not be equal")
 	}
 }
@@ -185,10 +185,10 @@ func TestInterval_Equals(t *testing.T) {
 	a := monitor.ReconstructInterval(30)
 	b := monitor.ReconstructInterval(30)
 	c := monitor.ReconstructInterval(60)
-	if !a.Equals(b) {
+	if !a.Equal(b) {
 		t.Error("Equals: identical intervals should be equal")
 	}
-	if a.Equals(c) {
+	if a.Equal(c) {
 		t.Error("Equals: different intervals should not be equal")
 	}
 }
@@ -229,10 +229,10 @@ func TestTimeout_Equals(t *testing.T) {
 	a := monitor.ReconstructTimeout(5)
 	b := monitor.ReconstructTimeout(5)
 	c := monitor.ReconstructTimeout(10)
-	if !a.Equals(b) {
+	if !a.Equal(b) {
 		t.Error("Equals: identical timeouts should be equal")
 	}
-	if a.Equals(c) {
+	if a.Equal(c) {
 		t.Error("Equals: different timeouts should not be equal")
 	}
 }

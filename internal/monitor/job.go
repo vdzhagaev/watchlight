@@ -3,6 +3,7 @@ package monitor
 import (
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -14,6 +15,7 @@ type CheckJob interface {
 	Base() jobBase
 	Target() string
 	CheckType() CheckType
+	Equal(other CheckJob) bool
 }
 
 type jobBase struct {
@@ -22,6 +24,14 @@ type jobBase struct {
 	Interval    time.Duration
 	Timeout     time.Duration
 	MaxAttempts int
+}
+
+func (jB jobBase) Equal(other jobBase) bool {
+	return jB.MonitorID == other.MonitorID &&
+		jB.ConfigID == other.ConfigID &&
+		jB.Interval == other.Interval &&
+		jB.Timeout == other.Timeout &&
+		jB.MaxAttempts == other.MaxAttempts
 }
 
 type PingJob struct {
@@ -59,6 +69,18 @@ func (p PingJob) isCheckJob() {}
 func (p PingJob) Target() string {
 	return net.JoinHostPort(p.Host.String(), strconv.Itoa(int(p.Port)))
 }
+
+func (p PingJob) Equal(other CheckJob) bool {
+	if other == nil {
+		return false
+	}
+	o, ok := other.(PingJob)
+	return ok &&
+		p.Host.Equal(o.Host) &&
+		p.Port == o.Port &&
+		p.jobBase.Equal(o.jobBase)
+}
+
 func (p PingJob) Base() jobBase {
 	return p.jobBase
 }
@@ -120,6 +142,20 @@ func (h HTTPJob) Base() jobBase {
 }
 func (HTTPJob) CheckType() CheckType {
 	return CheckHTTP
+}
+
+func (h HTTPJob) Equal(other CheckJob) bool {
+	if other == nil {
+		return false
+	}
+	o, ok := other.(HTTPJob)
+	return ok &&
+		h.Scheme == o.Scheme &&
+		h.Host.Equal(o.Host) &&
+		h.Path == o.Path &&
+		h.Method == o.Method &&
+		slices.Equal(h.Keywords, o.Keywords) &&
+		h.jobBase.Equal(o.jobBase)
 }
 
 var _ CheckJob = PingJob{}
