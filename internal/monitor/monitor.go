@@ -91,6 +91,18 @@ func enabledOrDefault(p *bool) bool {
 	return *p
 }
 
+func (m *Monitor) ChangeHost(host Host) {
+	m.Host = host
+}
+
+func (m *Monitor) Rename(name string) {
+	m.Name = name
+}
+
+func (m *Monitor) ChangeStatus(status MonitorStatus) {
+	m.Status = status
+}
+
 func (m *Monitor) UpdatePingConfig(in UpdatePingConfigInput) error {
 	pingConfig, err := m.PingConfig.Update(in)
 	if err != nil {

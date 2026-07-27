@@ -123,21 +123,13 @@ func (s *Storage) SetMonitorStatus(ctx context.Context, id uuid.UUID, status mon
 func (s *Storage) UpdateMonitor(ctx context.Context, id uuid.UUID, in monitor.UpdateMonitorInput) error {
 	const op = "storage.sqlite.UpdateMonitor"
 
-	// A nil field -> invalid NullString -> SQL NULL -> COALESCE keeps the column.
-	// One atomic UPDATE does the partial merge; no read-modify-write race.
-	var status *string
-	if in.Status != nil {
-		status = (*string)(in.Status)
-	}
-
 	res, err := s.db.ExecContext(
 		ctx,
 		`UPDATE monitors SET
 			name = COALESCE(?, name),
-			host = COALESCE(?, host),
-			status = COALESCE(?, status)
+			host = COALESCE(?, host)
 		WHERE id = ?`,
-		toNullString(in.Name), toNullString(in.Host), toNullString(status), id,
+		toNullString(in.Name), toNullString(in.Host), id,
 	)
 	if err != nil {
 		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {

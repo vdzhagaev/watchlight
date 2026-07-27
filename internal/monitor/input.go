@@ -14,9 +14,8 @@ type CreateMonitorInput struct {
 }
 
 type UpdateMonitorInput struct {
-	Name   *string
-	Host   *string
-	Status *MonitorStatus
+	Name *string
+	Host *string
 }
 
 type CheckResultInput struct {
