@@ -60,7 +60,7 @@ func (h *MonitorHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		Host: req.Host,
 	}
 
-	err = h.svc.Update(r.Context(), id, mUpdateIn)
+	_, err = h.svc.Update(r.Context(), id, mUpdateIn)
 
 	if errors.Is(err, monitor.ErrMonitorNotFound) {
 		log.Info("monitor not found", slog.String("id", idStr))

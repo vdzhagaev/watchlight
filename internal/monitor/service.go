@@ -33,17 +33,17 @@ func (svc *Service) Create(ctx context.Context, in CreateMonitorInput) (Monitor,
 	return m, nil
 }
 
-func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorInput) error {
+func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorInput) (Monitor, error) {
 	m, err := svc.repo.GetMonitor(ctx, id)
 	if err != nil {
-		return err
+		return Monitor{}, err
 	}
 	before := m.projectJobs()
 
 	if in.Host != nil {
 		host, err := NewHost(*in.Host)
 		if err != nil {
-			return err
+			return Monitor{}, err
 		}
 		m.ChangeHost(host)
 		normalized := host.String()
@@ -55,11 +55,11 @@ func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorIn
 
 	err = svc.repo.UpdateMonitor(ctx, id, in)
 	if err != nil {
-		return err
+		return Monitor{}, err
 	}
 	after := m.projectJobs()
 	svc.syncScheduler(ctx, before, after)
-	return nil
+	return m, nil
 }
 
 func (svc *Service) Get(ctx context.Context, id uuid.UUID) (Monitor, error) {
@@ -214,10 +214,13 @@ func (svc *Service) sendEvent(ctx context.Context, ev ConfigChangeEvent) {
 
 func (svc *Service) syncScheduler(ctx context.Context, before, after map[uuid.UUID]CheckJob) {
 	for id, job := range after {
-		if _, ok := before[id]; ok && job.Equal(before[id]) {
-			svc.sendEvent(ctx, ConfigChangeEvent{Type: EventUpdated, Job: job})
-		} else {
+		old, ok := before[id]
+		switch {
+		case !ok:
 			svc.sendEvent(ctx, ConfigChangeEvent{Type: EventCreated, Job: job})
+		case ok && !job.Equal(old):
+			svc.sendEvent(ctx, ConfigChangeEvent{Type: EventUpdated, Job: job})
+		default: // skip
 		}
 	}
 	for id, job := range before {
