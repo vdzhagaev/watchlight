@@ -120,12 +120,12 @@ func runnable(ct monitor.CheckType, interval time.Duration) monitor.CheckJob {
 
 func newTestScheduler(g ConfigsGetter, h ResultHandler, checkers map[monitor.CheckType]checker.Checker) *Scheduler {
 	return New(Params{
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Getter:       g,
-		Handler:      h,
-		Workers:      4,
-		Checkers:     checkers,
-		WriteTimeout: time.Second,
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Getter:        g,
+		ResultHandler: h,
+		Workers:       4,
+		Checkers:      checkers,
+		WriteTimeout:  time.Second,
 	})
 }
 

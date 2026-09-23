@@ -83,35 +83,6 @@ func (svc *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (svc *Service) HandleCheckResult(ctx context.Context, r CheckResultInput) error {
-	status := CheckFailure
-	if r.Reachable && r.Error == nil {
-		status = CheckSuccess
-	}
-	var errorMessage string
-	if r.Error != nil {
-		errorMessage = r.Error.Error()
-	}
-
-	id, err := uuid.NewV7()
-	if err != nil {
-		return err
-	}
-
-	return svc.repo.SaveCheckResult(ctx, CheckResult{
-		ID:            id,
-		MonitorID:     r.MonitorID,
-		ConfigID:      r.ConfigID,
-		CheckType:     r.CheckType,
-		Status:        status,
-		StatusCode:    r.StatusCode,
-		ResponseTime:  r.ResponseTime,
-		CheckedAt:     r.CheckedAt,
-		Error:         errorMessage,
-		FoundKeywords: r.FoundKeywords,
-	})
-}
-
 func (svc *Service) AddHTTPCheck(ctx context.Context, monitorID uuid.UUID, in CreateHTTPConfigInput) (HTTPConfig, error) {
 	m, err := svc.repo.GetMonitor(ctx, monitorID)
 	if err != nil {
