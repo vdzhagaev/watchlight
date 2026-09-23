@@ -38,3 +38,10 @@ const (
 	SchemeHTTP  HTTPScheme = "http"
 	SchemeHTTPS HTTPScheme = "https"
 )
+
+type ConfigType string
+
+const (
+	PingConfigType ConfigType = "ping_config"
+	HTTPConfigType ConfigType = "http_config"
+)

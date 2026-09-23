@@ -25,6 +25,7 @@ type Incident struct {
 
 type Reason struct {
 	ConfigID       uuid.UUID
+	ConfigType     ConfigType
 	LastError      string
 	LatestResultID uuid.UUID
 	StartedAt      time.Time

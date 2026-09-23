@@ -69,6 +69,32 @@ func migrate(db *sql.DB) error {
     CREATE INDEX IF NOT EXISTS idx_results_monitor_time ON check_results(monitor_id, checked_at DESC);
     CREATE INDEX IF NOT EXISTS idx_results_config ON check_results(ping_config_id) WHERE ping_config_id IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_results_http_config ON check_results(http_config_id) WHERE http_config_id IS NOT NULL;
+
+	CREATE TABLE IF NOT EXISTS incidents(
+		id TEXT PRIMARY KEY,
+		monitor_id TEXT NOT NULL,
+		resolved_reason TEXT,
+		started_at DATETIME NOT NULL,
+		resolved_at DATETIME,
+
+		FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON DELETE CASCADE
+	);
+
+	CREATE TABLE IF NOT EXISTS incident_reasons(
+		incident_id TEXT NOT NULL,
+		config_id TEXT NOT NULL,
+		config_type TEXT NOT NULL,
+		last_error TEXT NOT NULL,
+		latest_result_id TEXT NOT NULL,
+		started_at DATETIME NOT NULL,
+		last_seen_at DATETIME NOT NULL,
+
+		PRIMARY KEY (incident_id, config_id),
+		FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
+	);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_incidents_one_open
+		ON incidents(monitor_id) WHERE resolved_at IS NULL;
 	`
 
 	_, err := db.Exec(q)
