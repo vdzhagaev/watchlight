@@ -173,3 +173,11 @@ func (m *Monitor) projectJobs() map[uuid.UUID]CheckJob {
 	}
 	return jobs
 }
+
+func (m *Monitor) DeriveStatus(hasOpen bool) {
+	if hasOpen {
+		m.Status = MonitorDown
+	} else {
+		m.Status = MonitorUp
+	}
+}

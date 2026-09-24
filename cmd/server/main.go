@@ -70,7 +70,7 @@ func run() error {
 
 	eventsChan := make(chan monitor.ConfigChangeEvent, EventChannelSize)
 
-	mService := monitor.NewService(storage, log, eventsChan)
+	mService := monitor.NewService(storage, storage, log, eventsChan)
 
 	mHandler := monitorhandler.NewHandler(log, val, mService)
 
