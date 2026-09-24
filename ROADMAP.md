@@ -40,6 +40,28 @@ These are settled; changing them requires a rethink.
 
 ## Phases
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-monospace, monospace','lineColor':'#6b7280','primaryColor':'#20242b','primaryBorderColor':'#3a3f47','primaryTextColor':'#c7ccd4'}}}%%
+flowchart TD
+    v05["v0.5 · Host remodel"] --> v06["v0.6 · Live monitoring"]
+    v06 --> v07["v0.7 · Incidents + notify seam"]
+    v07 --> v08["v0.8 · Users / auth"]
+    v08 --> v09["v0.9 · Notifications"]
+    v09 --> v010["v0.10 · API surface"]
+    v010 --> v011["v0.11 · Ops readiness"]
+    v011 --> v1["v1.0 · Ship"]
+    v07 -. notify seam .-> v09
+    v08 -. api-keys .-> v010
+    classDef done fill:#23262c,stroke:#454b54,color:#868c95;
+    classDef inflight fill:#34080f,stroke:#c21f30,color:#f1c9ce,stroke-width:2px;
+    classDef planned fill:#20242b,stroke:#3a3f47,color:#c7ccd4;
+    classDef milestone fill:#20242b,stroke:#c21f30,color:#e8eaed,stroke-width:2px;
+    class v05,v06 done;
+    class v07 inflight;
+    class v08,v09,v010,v011 planned;
+    class v1 milestone;
+```
+
 ### v0.1 — Monitor CRUD [done]
 
 Close the CRUD loop and put the Service layer under tests so subsequent
@@ -137,7 +159,7 @@ different things.
 given per-path HTTP checks; the aggregate operations enforce the invariants
 above (under tests); storage round-trips the new shape.
 
-### v0.6 — Live monitoring [next]
+### v0.6 — Live monitoring [done]
 
 Make monitoring stateful and self-updating: the scheduler keeps up with
 configuration changes, and each monitor carries a derived status.
@@ -151,17 +173,19 @@ configuration changes, and each monitor carries a derived status.
 - Mechanism decided in the issue (periodic reload-and-diff vs. push from the
   Service on CRUD)
 
-**Monitor status**
+**Monitor status (via incidents)**
 
-- `MonitorStatus` (up / down / unknown) derived in the domain after a check
-  result is recorded
-- Confirmation policy (N consecutive failures before `down`) living on the
-  check config; start with N=1 (stateless) and grow the policy later
-- Layered checks roll up by severity: a deeper-layer failure dominates
-  (ping < http < browser)
-- Status transition surfaced as domain data (a `StatusTransition`), kept in
-  the application layer — no DB-level triggers, no event bus until a real
-  second consumer (notifications) lands
+- Incidents are the substrate, introduced here: a per-monitor `Incident`
+  aggregate (own table, referenced by `monitor_id`) with a `Reasons` map keyed
+  by config — opened on the first failure, reasons recorded/recovered per
+  config, closed when the last reason clears. One open incident per monitor
+  (partial unique index).
+- `MonitorStatus` is **derived on read** from the open-incident fact (open →
+  `down`, else `up`), composed in the Service from a fact query — not stored,
+  not written on the check path. The `Monitor.status` column is vestigial until
+  a later migration drops it.
+- Deferred: `unknown` (needs a "has any result" fact), the N-consecutive-failure
+  policy, and severity roll-up (ping < http < browser).
 
 **Exit criteria:** adding or editing a monitor at runtime changes what the
 scheduler checks without a restart; a failing check moves the monitor to
@@ -174,36 +198,36 @@ scheduler checks without a restart; a failing check moves the monitor to
   done once the v0.6 core is stable.
 - Keyword `MustContain` / `MustNotContain` on HTTP checks (#30): replace the
   single implicit keyword list with two policy lists; the checker stays
-  fact-only (`FoundKeywords`), the verdict lives in the Service. The
-  keyword-exclude work (#31) rides along in the same bucket.
+  fact-only (`FoundKeywords`), the verdict lives in the Service. Off the
+  API-first / notifications wedge, so low priority.
 
-### v0.7 — Incidents + notify seam [planned]
+### v0.7 — Incidents + notify seam [next]
 
-Turn status transitions into tracked incidents, and lay the notification seam
-without building the routing subsystem yet.
+Incidents landed early, in v0.6, as the substrate for monitor status — so the
+incident model here is **done** and differs from the original per-check sketch.
+What remains is the query endpoint and the notification seam.
 
-**Incidents**
+**Incidents [done, in v0.6]**
 
-- `Incident` entity keyed per check: `id`, `monitor_id`, `check_id`,
-  `started_at`, `ended_at`, `reason`, `last_result_id`
-- Single-open invariant: at most one open incident per check. A `down`
-  transition opens one only if none is open; further failures update
-  `last_result_id`; recovery closes it. Enforced in the domain, backed by a
-  partial unique index in SQLite.
-- `IncidentRepository` on SQLite
-- `GET /monitors/{id}/incidents` endpoint
+- Per-**monitor** `Incident` aggregate (own table, referenced by `monitor_id`)
+  with a `Reasons` map keyed by config — not the per-check shape first planned.
+- Opened on the first failure; reasons recorded/recovered per config; closed
+  when the last reason clears. One open incident per monitor (partial unique
+  index). `IncidentRepository` on SQLite, whole-aggregate `Save`.
 
-**Notify seam**
+**Remaining**
 
-- `Notifier` interface with a single log-only implementation
-- Fired on incident open/close from the application layer (the second consumer
-  of the status transition, after persistence)
-- No channels, routing, or per-monitor settings yet — a dumb global sink that
-  proves the `incident → notify` wiring end-to-end
+- `GET /monitors/{id}/incidents` endpoint (list an aggregate's incidents).
+- **Notify seam**: a `Notifier` interface fired from the result processor on
+  incident open/close, after the incident is persisted (best-effort, errors
+  isolated per channel). Two concrete channels — a log sink and a Telegram
+  channel configured at deploy time via env (token + chat id) — behind a flat
+  `[]Notifier` fan-out. No rules, routing, templates, or per-monitor settings;
+  the configurable trigger → action engine is v0.9 (#31).
 
-**Exit criteria:** a failing check opens exactly one incident and logs it;
-continued failure does not open duplicates; recovery closes the incident and
-logs it; incidents are queryable per monitor.
+**Exit criteria:** a failing check opens exactly one incident; continued failure
+does not open duplicates; recovery closes it; incidents are queryable per
+monitor; open/close is delivered to the log and Telegram channels.
 
 ### v0.8 — Users / auth [planned]
 
