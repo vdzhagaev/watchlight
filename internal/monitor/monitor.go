@@ -99,10 +99,6 @@ func (m *Monitor) Rename(name string) {
 	m.Name = name
 }
 
-func (m *Monitor) ChangeStatus(status MonitorStatus) {
-	m.Status = status
-}
-
 func (m *Monitor) UpdatePingConfig(in UpdatePingConfigInput) error {
 	pingConfig, err := m.PingConfig.Update(in)
 	if err != nil {
@@ -138,7 +134,6 @@ func (m *Monitor) UpdateHTTPConfig(configID uuid.UUID, in UpdateHTTPConfigInput)
 
 func (m *Monitor) AddHTTPConfig(in CreateHTTPConfigInput) (HTTPConfig, error) {
 	hc, err := NewHTTPConfig(m.ID, in)
-
 	if err != nil {
 		return HTTPConfig{}, err
 	}
@@ -177,4 +172,12 @@ func (m *Monitor) projectJobs() map[uuid.UUID]CheckJob {
 		}
 	}
 	return jobs
+}
+
+func (m *Monitor) DeriveStatus(hasOpen bool) {
+	if hasOpen {
+		m.Status = MonitorDown
+	} else {
+		m.Status = MonitorUp
+	}
 }

@@ -29,6 +29,9 @@ var (
 	ErrPingConfigNotFound = errors.New("ping config not found")
 
 	ErrHTTPConfigExists = errors.New("http config already exists")
+
+	// TODO: move to incidents
+	ErrIncidentNotFound = errors.New("incident not found")
 )
 
 func ErrMethodNotAllowed(method string) error {

@@ -19,12 +19,13 @@ import (
 // delegates to the Repository and propagates results/errors. The store is a
 // generated mock, so we script exactly what the repository returns.
 
-func newSvc(t *testing.T) (*monitor.Service, *mocks.MockRepository, chan monitor.ConfigChangeEvent) {
+func newSvc(t *testing.T) (*monitor.Service, *mocks.MockRepository, *mocks.MockIncidentRepository, chan monitor.ConfigChangeEvent) {
 	t.Helper()
 	repo := mocks.NewMockRepository(t)
+	incidents := mocks.NewMockIncidentRepository(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	eventsChan := make(chan monitor.ConfigChangeEvent, 16)
-	return monitor.NewService(repo, log, eventsChan), repo, eventsChan
+	return monitor.NewService(repo, incidents, log, eventsChan), repo, incidents, eventsChan
 }
 
 func validInput() monitor.CreateMonitorInput {
@@ -39,7 +40,7 @@ func validInput() monitor.CreateMonitorInput {
 
 // Create builds the monitor via New() and forwards it to the repository.
 func TestService_Create_DelegatesToRepo(t *testing.T) {
-	svc, repo, _ := newSvc(t)
+	svc, repo, _, _ := newSvc(t)
 
 	repo.EXPECT().
 		CreateMonitor(mock.Anything, mock.AnythingOfType("monitor.Monitor")).
@@ -60,7 +61,7 @@ func TestService_Create_DelegatesToRepo(t *testing.T) {
 
 // An error from the repository is propagated unchanged.
 func TestService_Create_PropagatesRepoError(t *testing.T) {
-	svc, repo, _ := newSvc(t)
+	svc, repo, _, _ := newSvc(t)
 
 	repo.EXPECT().
 		CreateMonitor(mock.Anything, mock.Anything).
@@ -77,7 +78,7 @@ func TestService_Create_PropagatesRepoError(t *testing.T) {
 // no expectations on the mock: if Create called the repo, the generated mock
 // would panic ("no return value specified for CreateMonitor") and fail the test.
 func TestService_Create_InvalidInput_SkipsRepo(t *testing.T) {
-	svc, _, _ := newSvc(t)
+	svc, _, _, _ := newSvc(t)
 
 	_, err := svc.Create(context.Background(), monitor.CreateMonitorInput{})
 	if !errors.Is(err, monitor.ErrMonitorEmptyName) {
@@ -86,7 +87,7 @@ func TestService_Create_InvalidInput_SkipsRepo(t *testing.T) {
 }
 
 func TestService_Get_Propagates(t *testing.T) {
-	svc, repo, _ := newSvc(t)
+	svc, repo, _, _ := newSvc(t)
 	id := uuid.New()
 
 	repo.EXPECT().GetMonitor(mock.Anything, id).
@@ -100,7 +101,7 @@ func TestService_Get_Propagates(t *testing.T) {
 }
 
 func TestService_Update_Propagates(t *testing.T) {
-	svc, repo, _ := newSvc(t)
+	svc, repo, _, _ := newSvc(t)
 	id := uuid.New()
 	name := "new"
 
@@ -119,7 +120,7 @@ func TestService_Update_Propagates(t *testing.T) {
 }
 
 func TestService_Update_NameOnly_NoEvents(t *testing.T) {
-	svc, repo, events := newSvc(t)
+	svc, repo, _, events := newSvc(t)
 	m, _ := monitor.New(validInput())
 	name := "new"
 
@@ -149,7 +150,7 @@ func TestService_Update_NameOnly_NoEvents(t *testing.T) {
 }
 
 func TestService_Update_HostOnly_EmitsUpdated(t *testing.T) {
-	svc, repo, events := newSvc(t)
+	svc, repo, _, events := newSvc(t)
 	m, _ := monitor.New(validInput())
 	newHost := "google.com"
 
@@ -279,7 +280,7 @@ func TestService_AddHTTPCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc, repo, events := newSvc(t)
+			svc, repo, _, events := newSvc(t)
 			m, _ := monitor.New(validInput())
 			tt.setup(repo, m)
 
@@ -359,7 +360,7 @@ func TestService_Delete(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc, repo, events := newSvc(t)
+			svc, repo, _, events := newSvc(t)
 			m, _ := monitor.New(validInput())
 			tt.setup(repo, m)
 
@@ -468,7 +469,7 @@ func TestService_UpdateHTTPCheck_EnableDisable(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc, repo, events := newSvc(t)
+			svc, repo, _, events := newSvc(t)
 			monID, cfgID := uuid.New(), uuid.New()
 			hc := monitor.ReconstructHTTPConfig(cfgID, monID, "https", "/health", "GET", tt.enabledBefore, 60, 10, 3, nil)
 			// ping left zero-valued (disabled) so the toggled http config is the
@@ -510,94 +511,63 @@ func TestService_UpdateHTTPCheck_EnableDisable(t *testing.T) {
 	}
 }
 
-// Regression for the nil-id UNIQUE collision (#38): every call must mint a
-// fresh, non-nil id, so two results built from the *same* input still persist
-// as distinct rows instead of colliding on UNIQUE(id).
-func TestService_HandleCheckResult_MintsFreshID(t *testing.T) {
-	svc, repo, _ := newSvc(t)
-
-	var saved []monitor.CheckResult
-	repo.EXPECT().
-		SaveCheckResult(mock.Anything, mock.AnythingOfType("monitor.CheckResult")).
-		Run(func(_ context.Context, r monitor.CheckResult) { saved = append(saved, r) }).
-		Return(nil).
-		Times(2)
-
-	in := monitor.CheckResultInput{
-		MonitorID: uuid.New(),
-		ConfigID:  uuid.New(),
-		Reachable: true,
-	}
-	for i := range 2 {
-		if err := svc.HandleCheckResult(context.Background(), in); err != nil {
-			t.Fatalf("HandleCheckResult #%d: %v", i, err)
-		}
-	}
-
-	if saved[0].ID == uuid.Nil || saved[1].ID == uuid.Nil {
-		t.Errorf("minted nil id: %v, %v", saved[0].ID, saved[1].ID)
-	}
-	if saved[0].ID == saved[1].ID {
-		t.Errorf("two results share id %v — would collide on UNIQUE(id)", saved[0].ID)
-	}
-}
-
-// Status is derived in the domain from raw facts. Failure-without-error
-// (Reachable=false, Error=nil) is a legitimate case and must not panic.
-func TestService_HandleCheckResult_DerivesStatus(t *testing.T) {
-	tests := []struct {
-		name       string
-		reachable  bool
-		err        error
-		wantStatus monitor.CheckStatus
-		wantMsg    string
-	}{
-		{"reachable, no error", true, nil, monitor.CheckSuccess, ""},
-		{"unreachable, no error", false, nil, monitor.CheckFailure, ""},
-		{"error", false, errors.New("boom"), monitor.CheckFailure, "boom"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			svc, repo, _ := newSvc(t)
-
-			var got monitor.CheckResult
-			repo.EXPECT().
-				SaveCheckResult(mock.Anything, mock.AnythingOfType("monitor.CheckResult")).
-				Run(func(_ context.Context, r monitor.CheckResult) { got = r }).
-				Return(nil).
-				Once()
-
-			err := svc.HandleCheckResult(context.Background(), monitor.CheckResultInput{
-				MonitorID: uuid.New(),
-				ConfigID:  uuid.New(),
-				Reachable: tt.reachable,
-				Error:     tt.err,
-			})
-			if err != nil {
-				t.Fatalf("HandleCheckResult: %v", err)
-			}
-			if got.Status != tt.wantStatus {
-				t.Errorf("Status = %v, want %v", got.Status, tt.wantStatus)
-			}
-			if got.Error != tt.wantMsg {
-				t.Errorf("Error = %q, want %q", got.Error, tt.wantMsg)
-			}
-		})
-	}
-}
-
-func TestService_List_Delegates(t *testing.T) {
-	svc, repo, _ := newSvc(t)
-	want := []monitor.Monitor{{Name: "a"}, {Name: "b"}}
+// List returns each monitor with its status derived from the open-incident
+// fact: a monitor in the set is Down, the rest are Up.
+func TestService_List_DerivesStatus(t *testing.T) {
+	svc, repo, inc, _ := newSvc(t)
+	idDown, idUp := uuid.New(), uuid.New()
+	want := []monitor.Monitor{{ID: idDown, Name: "a"}, {ID: idUp, Name: "b"}}
 
 	repo.EXPECT().GetMonitorList(mock.Anything).Return(want, nil).Once()
+	inc.EXPECT().ListMonitorIDsWithOpenIncident(mock.Anything).
+		Return(map[uuid.UUID]struct{}{idDown: {}}, nil).Once()
 
 	got, err := svc.List(context.Background())
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
 	if len(got) != len(want) {
-		t.Errorf("len = %d, want %d", len(got), len(want))
+		t.Fatalf("len = %d, want %d", len(got), len(want))
+	}
+	for _, m := range got {
+		wantStatus := monitor.MonitorUp
+		if m.ID == idDown {
+			wantStatus = monitor.MonitorDown
+		}
+		if m.Status != wantStatus {
+			t.Errorf("monitor %s status = %v, want %v", m.ID, m.Status, wantStatus)
+		}
+	}
+}
+
+// Get derives the monitor's status from whether it has an open incident.
+func TestService_Get_DerivesStatus(t *testing.T) {
+	tests := []struct {
+		name    string
+		hasOpen bool
+		want    monitor.MonitorStatus
+	}{
+		{"open incident -> down", true, monitor.MonitorDown},
+		{"no open incident -> up", false, monitor.MonitorUp},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, inc, _ := newSvc(t)
+			id := uuid.New()
+
+			repo.EXPECT().GetMonitor(mock.Anything, id).
+				Return(monitor.Monitor{ID: id}, nil).Once()
+			inc.EXPECT().GetOpenByMonitor(mock.Anything, id).
+				Return(monitor.Incident{}, tt.hasOpen, nil).Once()
+
+			m, err := svc.Get(context.Background(), id)
+			if err != nil {
+				t.Fatalf("Get() error = %v", err)
+			}
+			if m.Status != tt.want {
+				t.Errorf("status = %v, want %v", m.Status, tt.want)
+			}
+		})
 	}
 }

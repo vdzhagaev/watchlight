@@ -19,6 +19,7 @@ import (
 	"github.com/vdzhagaev/watchlight/internal/lib/logger/sl"
 	"github.com/vdzhagaev/watchlight/internal/monitor"
 	"github.com/vdzhagaev/watchlight/internal/services/checker"
+	"github.com/vdzhagaev/watchlight/internal/services/resultprocessor"
 	"github.com/vdzhagaev/watchlight/internal/services/scheduler"
 
 	// "github.com/vdzhagaev/watchlight/internal/services/checker"
@@ -35,8 +36,8 @@ const (
 	envDev   = "dev"
 	envProd  = "prod"
 
-	EVENTS_CHANNEL_SIZE = 100
-	SCHEDULER_WORKERS   = 50
+	EventChannelSize = 100
+	SchedulerWorkers = 50
 )
 
 func main() {
@@ -67,18 +68,23 @@ func run() error {
 
 	val := validator.New()
 
-	eventsChan := make(chan monitor.ConfigChangeEvent, EVENTS_CHANNEL_SIZE)
+	eventsChan := make(chan monitor.ConfigChangeEvent, EventChannelSize)
 
-	mService := monitor.NewService(storage, log, eventsChan)
+	mService := monitor.NewService(storage, storage, log, eventsChan)
 
 	mHandler := monitorhandler.NewHandler(log, val, mService)
 
+	resProc := resultprocessor.New(resultprocessor.Params{
+		CheckResultSaver: storage,
+		IncidentStore:    storage,
+	})
+
 	// TODO: Workers: Scheduler & Checker
 	scheduler := scheduler.New(scheduler.Params{
-		Logger:  log,
-		Getter:  storage,
-		Handler: mService,
-		Workers: SCHEDULER_WORKERS,
+		Logger:        log,
+		Getter:        storage,
+		ResultHandler: resProc,
+		Workers:       SchedulerWorkers,
 		Checkers: map[monitor.CheckType]checker.Checker{
 			monitor.CheckPing: checker.TCPChecker{},
 			monitor.CheckHTTP: checker.HTTPChecker{},

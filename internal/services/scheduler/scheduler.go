@@ -49,13 +49,13 @@ type Scheduler struct {
 }
 
 type Params struct {
-	Logger       *slog.Logger
-	Getter       ConfigsGetter
-	Handler      ResultHandler
-	Workers      int
-	Checkers     map[monitor.CheckType]checker.Checker
-	WriteTimeout time.Duration
-	ConfigEvents <-chan monitor.ConfigChangeEvent // out
+	Logger        *slog.Logger
+	Getter        ConfigsGetter
+	ResultHandler ResultHandler
+	Workers       int
+	Checkers      map[monitor.CheckType]checker.Checker
+	WriteTimeout  time.Duration
+	ConfigEvents  <-chan monitor.ConfigChangeEvent // out
 }
 
 type ConfigsGetter interface {
@@ -80,7 +80,7 @@ func New(p Params) *Scheduler {
 		done:         make(chan struct{}),
 		configEvents: p.ConfigEvents,
 		getter:       p.Getter,
-		handler:      p.Handler,
+		handler:      p.ResultHandler,
 		workers:      p.Workers,
 		logger:       p.Logger,
 		checkers:     p.Checkers,

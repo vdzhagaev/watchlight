@@ -65,7 +65,6 @@ func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 		timeout, max_attempts, keywords)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
-
 	if err != nil {
 		return fmt.Errorf("%s: prepare stmt: %w", op, err)
 	}
@@ -99,24 +98,6 @@ func (s *Storage) CreateMonitor(ctx context.Context, m monitor.Monitor) error {
 		return fmt.Errorf("%s: commit: %w", op, err)
 	}
 
-	return nil
-}
-
-func (s *Storage) SetMonitorStatus(ctx context.Context, id uuid.UUID, status monitor.MonitorStatus) error {
-	const op = "storage.sqlite.SetMonitorStatus"
-
-	res, err := s.db.ExecContext(ctx, "UPDATE monitors SET status = ? WHERE id = ?", status, id)
-	if err != nil {
-		return fmt.Errorf("%s: update status: %w", op, err)
-	}
-
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("%s: rows affected: %w", op, err)
-	}
-	if affected == 0 {
-		return monitor.ErrMonitorNotFound
-	}
 	return nil
 }
 
@@ -188,7 +169,6 @@ func (s *Storage) GetMonitor(ctx context.Context, id uuid.UUID) (monitor.Monitor
 		&pID, &pPort, &pIsEnabled, &pInterval,
 		&pTimeout, &pMaxAttempts,
 	)
-
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return monitor.Monitor{}, fmt.Errorf("%s: %w", op, monitor.ErrMonitorNotFound)
@@ -633,7 +613,6 @@ func (s *Storage) UpdatePingConfig(ctx context.Context, cfg monitor.PingConfig) 
 		cfg.Port, cfg.IsEnabled, cfg.Interval.Seconds(),
 		cfg.Timeout.Seconds(), cfg.MaxAttempts.Count(), cfg.ID,
 	)
-
 	if err != nil {
 		return fmt.Errorf("%s: updating ping config error: %w", op, err)
 	}
@@ -701,7 +680,6 @@ func (s *Storage) AddHTTPConfig(ctx context.Context, cfg monitor.HTTPConfig) err
 		cfg.Timeout.Seconds(), cfg.MaxAttempts.Count(),
 		string(keywords),
 	)
-
 	if err != nil {
 		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
 			return fmt.Errorf("%s: %w", op, monitor.ErrHTTPConfigExists)

@@ -9,13 +9,14 @@ import (
 )
 
 type Service struct {
-	repo       Repository
-	log        *slog.Logger
-	eventsChan chan ConfigChangeEvent
+	monitorRepo  Repository
+	incidentRepo IncidentRepository
+	log          *slog.Logger
+	eventsChan   chan ConfigChangeEvent
 }
 
-func NewService(repo Repository, log *slog.Logger, eventsChan chan ConfigChangeEvent) *Service {
-	return &Service{repo: repo, log: log, eventsChan: eventsChan}
+func NewService(monitorRepo Repository, incidentRepo IncidentRepository, log *slog.Logger, eventsChan chan ConfigChangeEvent) *Service {
+	return &Service{monitorRepo: monitorRepo, incidentRepo: incidentRepo, log: log, eventsChan: eventsChan}
 }
 
 func (svc *Service) Create(ctx context.Context, in CreateMonitorInput) (Monitor, error) {
@@ -23,7 +24,7 @@ func (svc *Service) Create(ctx context.Context, in CreateMonitorInput) (Monitor,
 	if err != nil {
 		return Monitor{}, err
 	}
-	err = svc.repo.CreateMonitor(ctx, m)
+	err = svc.monitorRepo.CreateMonitor(ctx, m)
 	if err != nil {
 		return Monitor{}, err
 	}
@@ -34,7 +35,7 @@ func (svc *Service) Create(ctx context.Context, in CreateMonitorInput) (Monitor,
 }
 
 func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorInput) (Monitor, error) {
-	m, err := svc.repo.GetMonitor(ctx, id)
+	m, err := svc.monitorRepo.GetMonitor(ctx, id)
 	if err != nil {
 		return Monitor{}, err
 	}
@@ -53,7 +54,7 @@ func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorIn
 		m.Rename(*in.Name)
 	}
 
-	err = svc.repo.UpdateMonitor(ctx, id, in)
+	err = svc.monitorRepo.UpdateMonitor(ctx, id, in)
 	if err != nil {
 		return Monitor{}, err
 	}
@@ -63,19 +64,40 @@ func (svc *Service) Update(ctx context.Context, id uuid.UUID, in UpdateMonitorIn
 }
 
 func (svc *Service) Get(ctx context.Context, id uuid.UUID) (Monitor, error) {
-	return svc.repo.GetMonitor(ctx, id)
+	m, err := svc.monitorRepo.GetMonitor(ctx, id)
+	if err != nil {
+		return Monitor{}, err
+	}
+	_, hasOpen, err := svc.incidentRepo.GetOpenByMonitor(ctx, id)
+	if err != nil {
+		return Monitor{}, err
+	}
+	m.DeriveStatus(hasOpen)
+	return m, nil
 }
 
 func (svc *Service) List(ctx context.Context) ([]Monitor, error) {
-	return svc.repo.GetMonitorList(ctx)
+	monitors, err := svc.monitorRepo.GetMonitorList(ctx)
+	if err != nil {
+		return nil, err
+	}
+	openSet, err := svc.incidentRepo.ListMonitorIDsWithOpenIncident(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i, m := range monitors {
+		_, hasOpen := openSet[m.ID]
+		monitors[i].DeriveStatus(hasOpen)
+	}
+	return monitors, nil
 }
 
 func (svc *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	m, err := svc.repo.GetMonitor(ctx, id)
+	m, err := svc.monitorRepo.GetMonitor(ctx, id)
 	if err != nil {
 		return err
 	}
-	err = svc.repo.DeleteMonitor(ctx, id)
+	err = svc.monitorRepo.DeleteMonitor(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -83,37 +105,8 @@ func (svc *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (svc *Service) HandleCheckResult(ctx context.Context, r CheckResultInput) error {
-	status := CheckFailure
-	if r.Reachable && r.Error == nil {
-		status = CheckSuccess
-	}
-	var errorMessage string
-	if r.Error != nil {
-		errorMessage = r.Error.Error()
-	}
-
-	id, err := uuid.NewV7()
-	if err != nil {
-		return err
-	}
-
-	return svc.repo.SaveCheckResult(ctx, CheckResult{
-		ID:            id,
-		MonitorID:     r.MonitorID,
-		ConfigID:      r.ConfigID,
-		CheckType:     r.CheckType,
-		Status:        status,
-		StatusCode:    r.StatusCode,
-		ResponseTime:  r.ResponseTime,
-		CheckedAt:     r.CheckedAt,
-		Error:         errorMessage,
-		FoundKeywords: r.FoundKeywords,
-	})
-}
-
 func (svc *Service) AddHTTPCheck(ctx context.Context, monitorID uuid.UUID, in CreateHTTPConfigInput) (HTTPConfig, error) {
-	m, err := svc.repo.GetMonitor(ctx, monitorID)
+	m, err := svc.monitorRepo.GetMonitor(ctx, monitorID)
 	if err != nil {
 		return HTTPConfig{}, err
 	}
@@ -124,7 +117,7 @@ func (svc *Service) AddHTTPCheck(ctx context.Context, monitorID uuid.UUID, in Cr
 		return HTTPConfig{}, err
 	}
 
-	if err := svc.repo.AddHTTPConfig(ctx, hc); err != nil {
+	if err := svc.monitorRepo.AddHTTPConfig(ctx, hc); err != nil {
 		return HTTPConfig{}, err
 	}
 
@@ -136,7 +129,7 @@ func (svc *Service) AddHTTPCheck(ctx context.Context, monitorID uuid.UUID, in Cr
 }
 
 func (svc *Service) UpdateHTTPCheck(ctx context.Context, monitorID, configID uuid.UUID, in UpdateHTTPConfigInput) error {
-	m, err := svc.repo.GetMonitor(ctx, monitorID)
+	m, err := svc.monitorRepo.GetMonitor(ctx, monitorID)
 	if err != nil {
 		return err
 	}
@@ -148,7 +141,7 @@ func (svc *Service) UpdateHTTPCheck(ctx context.Context, monitorID, configID uui
 		return err
 	}
 
-	if err := svc.repo.UpdateHTTPConfig(ctx, hc); err != nil {
+	if err := svc.monitorRepo.UpdateHTTPConfig(ctx, hc); err != nil {
 		return err
 	}
 
@@ -160,7 +153,7 @@ func (svc *Service) UpdateHTTPCheck(ctx context.Context, monitorID, configID uui
 }
 
 func (svc *Service) RemoveHTTPCheck(ctx context.Context, monitorID, configID uuid.UUID) error {
-	m, err := svc.repo.GetMonitor(ctx, monitorID)
+	m, err := svc.monitorRepo.GetMonitor(ctx, monitorID)
 	if err != nil {
 		return err
 	}
@@ -170,7 +163,7 @@ func (svc *Service) RemoveHTTPCheck(ctx context.Context, monitorID, configID uui
 		return err
 	}
 
-	err = svc.repo.RemoveHTTPConfig(ctx, configID)
+	err = svc.monitorRepo.RemoveHTTPConfig(ctx, configID)
 	if err != nil {
 		return err
 	}
@@ -182,7 +175,7 @@ func (svc *Service) RemoveHTTPCheck(ctx context.Context, monitorID, configID uui
 }
 
 func (svc *Service) UpdatePing(ctx context.Context, monitorID uuid.UUID, in UpdatePingConfigInput) error {
-	m, err := svc.repo.GetMonitor(ctx, monitorID)
+	m, err := svc.monitorRepo.GetMonitor(ctx, monitorID)
 	if err != nil {
 		return err
 	}
@@ -194,7 +187,7 @@ func (svc *Service) UpdatePing(ctx context.Context, monitorID uuid.UUID, in Upda
 		return err
 	}
 
-	if err := svc.repo.UpdatePingConfig(ctx, m.PingConfig); err != nil {
+	if err := svc.monitorRepo.UpdatePingConfig(ctx, m.PingConfig); err != nil {
 		return err
 	}
 
